@@ -1,7 +1,9 @@
+import asyncio
+
 import discord
 from discord import app_commands
 from discord.ext import commands
-from services.lastfm_service import fetch_top_tracks
+from services.lastfm_service import fetch_top_tracks, fetch_top_albums
 
 
 class CollageCog(commands.Cog):
@@ -12,4 +14,7 @@ class CollageCog(commands.Cog):
     @app_commands.describe(username="The Last.fm username to create a collage for")
     async def create_collage(self, interaction: discord.Interaction, username: str):
         await interaction.response.send_message(f"Creating collage for {username}...")
-        await fetch_top_tracks(self.bot.session, username)
+        top_tracks, top_albums = await asyncio.gather(
+            fetch_top_tracks(self.bot.session, username),
+            fetch_top_albums(self.bot.session, username),
+        )
