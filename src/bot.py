@@ -2,6 +2,7 @@ import discord
 from dotenv import load_dotenv
 import os
 from discord.ext import commands
+from cogs.collage_cog import CollageCog
 
 load_dotenv()
 
@@ -23,7 +24,7 @@ async def on_ready():
 
 
 async def main():
-    await bot.load_extension("cogs.collage_cog")
+    await bot.add_cog(CollageCog(bot))
     await bot.start(os.getenv("LAST_FM_DISCORD_TOKEN"))
 
 

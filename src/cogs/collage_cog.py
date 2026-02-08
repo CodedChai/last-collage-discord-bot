@@ -13,7 +13,3 @@ class CollageCog(commands.Cog):
     async def create_collage(self, interaction: discord.Interaction, username: str):
         await interaction.response.send_message(f"Creating collage for {username}...")
         await fetch_top_tracks(username)
-
-
-async def setup(bot: commands.Bot):
-    await bot.add_cog(CollageCog(bot))
