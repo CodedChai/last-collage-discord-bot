@@ -12,4 +12,4 @@ class CollageCog(commands.Cog):
     @app_commands.describe(username="The Last.fm username to create a collage for")
     async def create_collage(self, interaction: discord.Interaction, username: str):
         await interaction.response.send_message(f"Creating collage for {username}...")
-        await fetch_top_tracks(username)
+        await fetch_top_tracks(self.bot.session, username)
