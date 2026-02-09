@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 
 import discord
@@ -11,6 +12,13 @@ from cogs.collage_cog import CollageCog
 
 load_dotenv()
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.FileHandler("bot.log"), logging.StreamHandler()],
+)
+logger = logging.getLogger("lastfm_collage_bot")
+
 
 class Bot(commands.Bot):
     def __init__(self):
@@ -21,10 +29,10 @@ class Bot(commands.Bot):
         self.session = aiohttp.ClientSession()
         await self.add_cog(CollageCog(self))
         synced = await self.tree.sync()
-        print(f"Synced {len(synced)} command(s)")
+        logger.info(f"Synced {len(synced)} command(s)")
 
     async def on_ready(self):
-        print(f"We have logged in as {self.user}")
+        logger.info(f"Bot ready: logged in as {self.user}")
 
     async def close(self):
         await self.session.close()

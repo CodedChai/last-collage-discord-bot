@@ -1,9 +1,12 @@
+import logging
 import os
 import aiohttp
 from dotenv import load_dotenv
 from models import TopTracksModel, TopAlbumsModel
 
 load_dotenv()
+
+logger = logging.getLogger('lastfm_collage_bot.lastfm_service')
 
 BASE_URL = "http://ws.audioscrobbler.com/2.0/"
 
@@ -20,19 +23,22 @@ async def fetch_top_tracks(session: aiohttp.ClientSession, username: str):
         "user": username,
         "period": "7day",
     }
-    async with session.get(BASE_URL, params=params) as response:
-        if response.status == 200:
-            data = await response.json()
-            top_tracks = TopTracksModel.model_validate(data)
-            print(f"Top tracks for {username}:")
-            for track in top_tracks.tracks:
-                print(
-                    f"{track.rank}. {track.artist} - {track.name} (Playcount: {track.playcount})"
-                )
-            return top_tracks
-        else:
-            print(f"Failed to fetch top tracks for {username}: {response.status}")
-            return []
+    try:
+        async with session.get(BASE_URL, params=params) as response:
+            if response.status == 200:
+                data = await response.json()
+                top_tracks = TopTracksModel.model_validate(data)
+                logger.info(f"Successfully fetched {len(top_tracks.tracks)} top tracks for {username}")
+                return top_tracks
+            else:
+                logger.error(f"Failed to fetch top tracks for {username}: HTTP {response.status}")
+                return []
+    except aiohttp.ClientError as e:
+        logger.error(f"Network error fetching top tracks for {username}: {e}")
+        return []
+    except Exception as e:
+        logger.error(f"Unexpected error fetching top tracks for {username}: {e}", exc_info=True)
+        return []
 
 
 async def fetch_top_albums(session: aiohttp.ClientSession, username: str):
@@ -42,16 +48,19 @@ async def fetch_top_albums(session: aiohttp.ClientSession, username: str):
         "user": username,
         "period": "7day",
     }
-    async with session.get(BASE_URL, params=params) as response:
-        if response.status == 200:
-            data = await response.json()
-            top_albums = TopAlbumsModel.model_validate(data)
-            print(f"Top albums for {username}:")
-            for album in top_albums.albums:
-                print(
-                    f"{album.rank}. {album.artist} - {album.name} (Playcount: {album.playcount}) Image: {album.image_url}"
-                )
-            return top_albums
-        else:
-            print(f"Failed to fetch top albums for {username}: {response.status}")
-            return []
+    try:
+        async with session.get(BASE_URL, params=params) as response:
+            if response.status == 200:
+                data = await response.json()
+                top_albums = TopAlbumsModel.model_validate(data)
+                logger.info(f"Successfully fetched {len(top_albums.albums)} top albums for {username}")
+                return top_albums
+            else:
+                logger.error(f"Failed to fetch top albums for {username}: HTTP {response.status}")
+                return []
+    except aiohttp.ClientError as e:
+        logger.error(f"Network error fetching top albums for {username}: {e}")
+        return []
+    except Exception as e:
+        logger.error(f"Unexpected error fetching top albums for {username}: {e}", exc_info=True)
+        return []
