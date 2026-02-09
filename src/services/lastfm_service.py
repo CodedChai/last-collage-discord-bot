@@ -1,22 +1,21 @@
 import os
-
 import aiohttp
-
+from dotenv import load_dotenv
 from models import TopTracksModel, TopAlbumsModel
+
+load_dotenv()
 
 BASE_URL = "http://ws.audioscrobbler.com/2.0/"
 
-
-def get_default_params():
-    return {
-        "api_key": os.getenv("LAST_FM_API_KEY"),
-        "format": "json",
-    }
+DEFAULT_PARAMS = {
+    "api_key": os.getenv("LAST_FM_API_KEY"),
+    "format": "json",
+}
 
 
 async def fetch_top_tracks(session: aiohttp.ClientSession, username: str):
     params = {
-        **get_default_params(),
+        **DEFAULT_PARAMS,
         "method": "user.getTopTracks",
         "user": username,
         "period": "7day",
@@ -38,7 +37,7 @@ async def fetch_top_tracks(session: aiohttp.ClientSession, username: str):
 
 async def fetch_top_albums(session: aiohttp.ClientSession, username: str):
     params = {
-        **get_default_params(),
+        **DEFAULT_PARAMS,
         "method": "user.getTopAlbums",
         "user": username,
         "period": "7day",
