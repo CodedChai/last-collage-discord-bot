@@ -42,16 +42,12 @@ class CollageCog(commands.Cog):
 
             buffer = await generate_collage(self.bot.session, top_albums.albums)
 
-            top_5_albums = "\n".join(
-                f"{i + 1}. **{album.artist} - {album.name}** ({album.playcount} plays)"
-                for i, album in enumerate(top_albums.albums[:5])
-            )
             top_5_tracks = "\n".join(
                 f"{i + 1}. **{track.artist} - {track.name}** ({track.playcount} plays)"
                 for i, track in enumerate(top_tracks.tracks[:5])
             )
 
-            message = f"**Top 5 Albums:**\n{top_5_albums}\n\n**Top 5 Tracks:**\n{top_5_tracks}"
+            message = f"{username}'s collage\n\n**Top 5 Tracks:**\n{top_5_tracks}"
 
             await interaction.followup.send(
                 content=message, file=discord.File(buffer, filename="collage.png")
