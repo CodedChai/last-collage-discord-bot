@@ -9,6 +9,7 @@ from discord import app_commands, ui
 from discord.ext import commands
 from services.lastfm_service import fetch_top_tracks, fetch_top_albums, LastFmError
 from services.collage_service import generate_collage
+from services.db_service import get_lastfm_username, save_lastfm_username
 
 logger = logging.getLogger("lastfm_collage_bot.collage_cog")
 
@@ -54,9 +55,14 @@ class CollageModal(discord.ui.Modal, title="Create Collage"):
         component=ui.Select(options=GRID_SIZE_OPTIONS),
     )
 
-    def __init__(self, session):
+    def __init__(self, session, default_username: str | None = None):
         super().__init__()
         self.session = session
+        if default_username:
+            self.username.component = ui.TextInput(
+                placeholder="Enter your Last.fm username...",
+                default=default_username,
+            )
 
     async def on_submit(self, interaction: discord.Interaction):
         username_val = self.username.component.value
@@ -118,6 +124,7 @@ class CollageModal(discord.ui.Modal, title="Create Collage"):
                 )
             else:
                 await interaction.followup.send(embed=embed)
+            await save_lastfm_username(interaction.user.id, username_val)
             logger.info(f"Successfully created collage for {username_val}")
 
         except LastFmError as e:
@@ -146,4 +153,7 @@ class CollageCog(commands.Cog):
 
     @app_commands.command(name="create-collage")
     async def create_collage(self, interaction: discord.Interaction):
-        await interaction.response.send_modal(CollageModal(self.bot.session))
+        cached_username = await get_lastfm_username(interaction.user.id)
+        await interaction.response.send_modal(
+            CollageModal(self.bot.session, default_username=cached_username)
+        )

@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 import aiohttp
 
 from cogs.collage_cog import CollageCog
+from services.db_service import init_db
 
 load_dotenv()
 
@@ -26,6 +27,7 @@ class Bot(commands.Bot):
         super().__init__(command_prefix=commands.when_mentioned, intents=intents)
 
     async def setup_hook(self):
+        await init_db()
         self.session = aiohttp.ClientSession(
             headers={"User-Agent": "LastFmCollageDiscordBot/1.0"},
             timeout=aiohttp.ClientTimeout(total=30, connect=10),
