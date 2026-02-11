@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import traceback
 
 import discord
 from discord import app_commands
@@ -10,26 +11,31 @@ from services.collage_service import generate_collage
 logger = logging.getLogger("lastfm_collage_bot.collage_cog")
 
 
-class CollageCog(commands.Cog):
-    def __init__(self, bot: commands.Bot):
-        self.bot = bot
+class CollageModal(discord.ui.Modal, title="Create Collage"):
+    username = discord.ui.TextInput(
+        label="Last.fm Username",
+        placeholder="Enter your Last.fm username...",
+    )
 
-    @app_commands.command(name="create-collage")
-    @app_commands.describe(username="The Last.fm username to create a collage for")
-    async def create_collage(self, interaction: discord.Interaction, username: str):
+    def __init__(self, session):
+        super().__init__()
+        self.session = session
+
+    async def on_submit(self, interaction: discord.Interaction):
+        username = self.username.value
         logger.info(
             f"Collage creation requested for user: {username} by {interaction.user}"
         )
 
-        try:
-            await interaction.response.send_message(
-                f"Creating collage for {username}. Please wait a moment.",
-                ephemeral=True,
-            )
+        await interaction.response.send_message(
+            f"Creating collage for {username}. Please wait a moment.",
+            ephemeral=True,
+        )
 
+        try:
             top_tracks, top_albums = await asyncio.gather(
-                fetch_top_tracks(self.bot.session, username),
-                fetch_top_albums(self.bot.session, username),
+                fetch_top_tracks(self.session, username),
+                fetch_top_albums(self.session, username),
             )
 
             if not top_albums or not top_albums.albums:
@@ -40,7 +46,7 @@ class CollageCog(commands.Cog):
                 )
                 return
 
-            buffer = await generate_collage(self.bot.session, top_albums.albums)
+            buffer = await generate_collage(self.session, top_albums.albums)
 
             top_5_tracks = "\n".join(
                 f"{i + 1}. **{track.artist} - {track.name}** ({track.playcount} plays)"
@@ -62,4 +68,19 @@ class CollageCog(commands.Cog):
                     ephemeral=True,
                 )
             except:
-                pass  # Interaction may have already timed out
+                pass
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
+        await interaction.response.send_message(
+            "Oops! Something went wrong.", ephemeral=True
+        )
+        traceback.print_exception(type(error), error, error.__traceback__)
+
+
+class CollageCog(commands.Cog):
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+
+    @app_commands.command(name="create-collage")
+    async def create_collage(self, interaction: discord.Interaction):
+        await interaction.response.send_modal(CollageModal(self.bot.session))
