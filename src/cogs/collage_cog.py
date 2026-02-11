@@ -103,7 +103,7 @@ class CollageModal(discord.ui.Modal, title="Create Collage"):
 
             period_label = PERIOD_LABELS.get(period_val, period_val)
             embed = discord.Embed(
-                title=f"{username_val}'s collage",
+                title=f"{interaction.user.display_name}'s collage",
                 description=description,
                 color=EMBED_COLOR,
                 timestamp=datetime.datetime.now(datetime.timezone.utc),
