@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import logging
 import os
 import re
@@ -89,6 +90,7 @@ async def _download_image(
         return None
 
 
+@functools.lru_cache(maxsize=4)
 def _load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     font_path = os.getenv("FONT_PATH")
     if font_path:
