@@ -62,7 +62,7 @@ async def _download_image(
         cached = image_cache.get(url)
         if cached is not None:
             logger.info(f"Cache hit for {url}")
-            return Image.open(BytesIO(cached)).resize((TILE_SIZE, TILE_SIZE))
+            return Image.open(BytesIO(cached))
 
         urls_to_try = [url] + [
             SIZE_PATTERN.sub(rf"\g<1>{size}\2", url)
@@ -77,8 +77,16 @@ async def _download_image(
                 data = await _fetch_image_bytes(session, try_url)
 
             if data is not None:
-                image_cache.set(url, data)
-                return Image.open(BytesIO(data)).resize((TILE_SIZE, TILE_SIZE))
+                img = Image.open(BytesIO(data))
+
+                if img.size != (TILE_SIZE, TILE_SIZE):
+                    img.thumbnail((TILE_SIZE, TILE_SIZE), Image.Resampling.BILINEAR)
+
+                buffer = BytesIO()
+                img.save(buffer, format='PNG')
+                image_cache.set(url, buffer.getvalue())
+
+                return img
 
         logger.warning(f"All image sizes failed for {url}")
         return None
