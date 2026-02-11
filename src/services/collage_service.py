@@ -42,7 +42,8 @@ def _load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     font_path = os.getenv("FONT_PATH")
     if font_path:
         try:
-            return ImageFont.truetype(font_path, size)
+            font_index = int(os.getenv("FONT_INDEX", "0"))
+            return ImageFont.truetype(font_path, size, index=font_index)
         except Exception as e:
             logger.warning(
                 f"Failed to load font from {font_path}: {e}. Using default font."
@@ -84,18 +85,21 @@ def _wrap_text(draw: ImageDraw.Draw, text: str, font, max_width: int) -> list[st
     return lines
 
 
-def _draw_wrapped_text_bottom_up(draw: ImageDraw.Draw, lines: list[str], font, x: int, y: int, spacing: int = 4) -> int:
-    for line in reversed(lines):
-        bbox = draw.textbbox((0, 0), line, font=font)
-        y -= bbox[3] - bbox[1]
+def _draw_wrapped_text_bottom_up(draw: ImageDraw.Draw, lines: list[str], font, x: int, y: int, line_spacing: int = 2) -> int:
+    ascent, descent = font.getmetrics()
+    line_height = ascent + descent
+    for i, line in enumerate(reversed(lines)):
+        y -= line_height
         _draw_outlined_text(draw, (x, y), line, font)
-        y -= spacing
+        if i < len(lines) - 1:
+            y -= line_spacing
     return y
 
 
 def _add_overlay(image: Image.Image, album: AlbumModel) -> Image.Image:
     draw = ImageDraw.Draw(image)
     padding = 8
+    block_spacing = 6
     max_width = TILE_SIZE - padding * 2
     font = _load_font(24)
     small_font = _load_font(18)
@@ -107,6 +111,7 @@ def _add_overlay(image: Image.Image, album: AlbumModel) -> Image.Image:
 
     y = TILE_SIZE - padding
     y = _draw_wrapped_text_bottom_up(draw, album_lines, small_font, padding, y)
+    y -= block_spacing
     _draw_wrapped_text_bottom_up(draw, artist_lines, font, padding, y)
 
     return image
