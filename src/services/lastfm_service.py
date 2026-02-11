@@ -2,6 +2,7 @@ import logging
 import os
 import aiohttp
 from dotenv import load_dotenv
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, before_sleep_log
 from models import TopTracksModel, TopAlbumsModel
 
 load_dotenv()
@@ -40,6 +41,13 @@ def _check_for_errors(data: dict):
         raise LastFmError(code, message)
 
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=1, max=5),
+    retry=retry_if_exception_type(aiohttp.ClientError),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=True,
+)
 async def fetch_top_tracks(session: aiohttp.ClientSession, username: str, period: str = "7day"):
     params = {
         **DEFAULT_PARAMS,
@@ -68,6 +76,13 @@ async def fetch_top_tracks(session: aiohttp.ClientSession, username: str, period
         return []
 
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=1, max=5),
+    retry=retry_if_exception_type(aiohttp.ClientError),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=True,
+)
 async def fetch_top_albums(session: aiohttp.ClientSession, username: str, period: str = "7day"):
     params = {
         **DEFAULT_PARAMS,

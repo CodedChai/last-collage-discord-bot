@@ -3,3 +3,4 @@ discord.py==2.6.4
 pillow==12.1.0
 pydantic==2.12.5
 python-dotenv==1.2.1
+tenacity==9.1.4
