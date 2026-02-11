@@ -5,6 +5,7 @@ import re
 from io import BytesIO
 
 import aiohttp
+import diskcache
 from dotenv import load_dotenv
 from PIL import Image, ImageDraw, ImageFont
 from tenacity import (
@@ -19,6 +20,10 @@ from models import AlbumModel
 load_dotenv()
 
 logger = logging.getLogger("lastfm_collage_bot.collage_service")
+
+CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "image_cache")
+CACHE_SIZE_LIMIT = int(os.getenv("IMAGE_CACHE_SIZE_MB", "500")) * 1024 * 1024
+image_cache = diskcache.Cache(CACHE_DIR, size_limit=CACHE_SIZE_LIMIT)
 
 DEFAULT_GRID_SIZE = 3
 TILE_SIZE = 300
@@ -36,11 +41,10 @@ SIZE_PATTERN = re.compile(r"(/i/u/)[^/]+(/)")
     retry=retry_if_exception_type(aiohttp.ClientError),
     reraise=True,
 )
-async def _fetch_image(session: aiohttp.ClientSession, url: str) -> Image.Image | None:
+async def _fetch_image_bytes(session: aiohttp.ClientSession, url: str) -> bytes | None:
     async with session.get(url, headers=IMAGE_DOWNLOAD_HEADERS) as response:
         if response.status == 200:
-            data = await response.read()
-            return Image.open(BytesIO(data)).resize((TILE_SIZE, TILE_SIZE))
+            return await response.read()
         elif response.status == 404:
             return None
         else:
@@ -54,18 +58,26 @@ async def _download_image(
     session: aiohttp.ClientSession, url: str
 ) -> Image.Image | None:
     try:
-        img = await _fetch_image(session, url)
-        if img is not None:
-            return img
+        cached = image_cache.get(url)
+        if cached is not None:
+            logger.info(f"Cache hit for {url}")
+            return Image.open(BytesIO(cached)).resize((TILE_SIZE, TILE_SIZE))
 
-        for size in FALLBACK_SIZES:
-            fallback_url = SIZE_PATTERN.sub(rf"\g<1>{size}\2", url)
-            if fallback_url == url:
-                break
-            logger.info(f"Trying fallback size {size} for {url} -> {fallback_url}")
-            img = await _fetch_image(session, fallback_url)
-            if img is not None:
-                return img
+        urls_to_try = [url] + [
+            SIZE_PATTERN.sub(rf"\g<1>{size}\2", url)
+            for size in FALLBACK_SIZES
+        ]
+
+        for try_url in urls_to_try:
+            if try_url == url:
+                data = await _fetch_image_bytes(session, try_url)
+            else:
+                logger.info(f"Trying fallback for {url} -> {try_url}")
+                data = await _fetch_image_bytes(session, try_url)
+
+            if data is not None:
+                image_cache.set(url, data)
+                return Image.open(BytesIO(data)).resize((TILE_SIZE, TILE_SIZE))
 
         logger.warning(f"All image sizes failed for {url}")
         return None
