@@ -5,7 +5,7 @@ import traceback
 import discord
 from discord import app_commands, ui
 from discord.ext import commands
-from services.lastfm_service import fetch_top_tracks, fetch_top_albums
+from services.lastfm_service import fetch_top_tracks, fetch_top_albums, LastFmError
 from services.collage_service import generate_collage
 
 logger = logging.getLogger("lastfm_collage_bot.collage_cog")
@@ -88,6 +88,9 @@ class CollageModal(discord.ui.Modal, title="Create Collage"):
             )
             logger.info(f"Successfully created collage for {username_val}")
 
+        except LastFmError as e:
+            logger.warning(f"Last.fm API error for {username_val}: {e.message} (code {e.code})")
+            await interaction.followup.send(e.message, ephemeral=True)
         except Exception as e:
             logger.error(f"Error creating collage for {username_val}: {e}", exc_info=True)
             try:

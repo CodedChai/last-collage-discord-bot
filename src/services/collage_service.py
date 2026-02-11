@@ -112,33 +112,39 @@ def _add_overlay(image: Image.Image, album: AlbumModel) -> Image.Image:
     return image
 
 
+def _create_placeholder() -> Image.Image:
+    return Image.new("RGB", (TILE_SIZE, TILE_SIZE), (30, 30, 30))
+
+
 async def generate_collage(
     session: aiohttp.ClientSession, albums: list[AlbumModel], grid_size: int = DEFAULT_GRID_SIZE
 ) -> BytesIO:
-    albums_with_art = [a for a in albums if a.image_url][: grid_size * grid_size]
-    logger.info(f"Generating {grid_size}x{grid_size} collage with {len(albums_with_art)} albums")
+    selected_albums = albums[: grid_size * grid_size]
+    logger.info(f"Generating {grid_size}x{grid_size} collage with {len(selected_albums)} albums")
 
-    images = await asyncio.gather(
-        *(_download_image(session, album.image_url) for album in albums_with_art)
+    albums_with_urls = [(i, a) for i, a in enumerate(selected_albums) if a.image_url]
+    downloaded = await asyncio.gather(
+        *(_download_image(session, album.image_url) for _, album in albums_with_urls)
     )
+
+    images: list[Image.Image | None] = [None] * len(selected_albums)
+    for (i, _), img in zip(albums_with_urls, downloaded):
+        images[i] = img
 
     successful_downloads = sum(1 for img in images if img is not None)
     logger.info(
-        f"Successfully downloaded {successful_downloads}/{len(images)} album cover images"
+        f"Successfully downloaded {successful_downloads}/{len(selected_albums)} album cover images"
     )
 
     collage_size = grid_size * TILE_SIZE
     collage = Image.new("RGB", (collage_size, collage_size), (0, 0, 0))
 
-    for i, img in enumerate(images):
-        if img is None:
-            continue
-
-        album = albums_with_art[i]
-        img_with_overlay = _add_overlay(img, album)
+    for i, album in enumerate(selected_albums):
+        img = images[i] if images[i] is not None else _create_placeholder()
+        _add_overlay(img, album)
 
         row, col = divmod(i, grid_size)
-        collage.paste(img_with_overlay, (col * TILE_SIZE, row * TILE_SIZE))
+        collage.paste(img, (col * TILE_SIZE, row * TILE_SIZE))
 
     buffer = BytesIO()
     collage.save(buffer, format="PNG")
