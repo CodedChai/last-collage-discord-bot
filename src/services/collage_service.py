@@ -80,7 +80,7 @@ async def _download_image(
                 img = Image.open(BytesIO(data))
 
                 if img.size != (TILE_SIZE, TILE_SIZE):
-                    img.thumbnail((TILE_SIZE, TILE_SIZE), Image.Resampling.BILINEAR)
+                    img = img.resize((TILE_SIZE, TILE_SIZE), Image.Resampling.LANCZOS)
 
                 buffer = BytesIO()
                 img.save(buffer, format='PNG')
