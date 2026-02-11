@@ -16,12 +16,12 @@ DEFAULT_PARAMS = {
 }
 
 
-async def fetch_top_tracks(session: aiohttp.ClientSession, username: str):
+async def fetch_top_tracks(session: aiohttp.ClientSession, username: str, period: str = "7day"):
     params = {
         **DEFAULT_PARAMS,
         "method": "user.getTopTracks",
         "user": username,
-        "period": "7day",
+        "period": period,
     }
     try:
         async with session.get(BASE_URL, params=params) as response:
@@ -41,12 +41,12 @@ async def fetch_top_tracks(session: aiohttp.ClientSession, username: str):
         return []
 
 
-async def fetch_top_albums(session: aiohttp.ClientSession, username: str):
+async def fetch_top_albums(session: aiohttp.ClientSession, username: str, period: str = "7day"):
     params = {
         **DEFAULT_PARAMS,
         "method": "user.getTopAlbums",
         "user": username,
-        "period": "7day",
+        "period": period,
     }
     try:
         async with session.get(BASE_URL, params=params) as response:
