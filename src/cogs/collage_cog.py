@@ -1,6 +1,8 @@
 import asyncio
+import datetime
 import logging
 import traceback
+from urllib.parse import quote_plus
 
 import discord
 from discord import app_commands, ui
@@ -9,6 +11,17 @@ from services.lastfm_service import fetch_top_tracks, fetch_top_albums, LastFmEr
 from services.collage_service import generate_collage
 
 logger = logging.getLogger("lastfm_collage_bot.collage_cog")
+
+EMBED_COLOR = 0x1DB954
+
+PERIOD_LABELS = {
+    "7day": "7 Days",
+    "1month": "1 Month",
+    "3month": "3 Months",
+    "6month": "6 Months",
+    "12month": "12 Months",
+    "overall": "Overall",
+}
 
 PERIOD_OPTIONS = [
     discord.SelectOption(label="7 Days", value="7day", default=True),
@@ -66,7 +79,10 @@ class CollageModal(discord.ui.Modal, title="Create Collage"):
                 fetch_top_albums(self.session, username_val, period_val),
             )
 
-            if not top_albums or not top_albums.albums:
+            has_albums = top_albums and top_albums.albums
+            has_tracks = top_tracks and top_tracks.tracks
+
+            if not has_albums and not has_tracks:
                 logger.warning(f"No data found for Last.fm user: {username_val}")
                 await interaction.followup.send(
                     "No data found for that user. Please ensure scrobbling is enabled for https://last.fm",
@@ -74,18 +90,34 @@ class CollageModal(discord.ui.Modal, title="Create Collage"):
                 )
                 return
 
-            buffer = await generate_collage(self.session, top_albums.albums, grid_size_val)
+            if has_tracks:
+                top_5_tracks = "\n".join(
+                    f"{i + 1}. [{track.artist} - {track.name}]"
+                    f"(https://www.youtube.com/results?search_query={quote_plus(f'{track.artist} {track.name}')})"
+                    f" ({track.playcount} plays)"
+                    for i, track in enumerate(top_tracks.tracks[:5])
+                )
+                description = f"**Top 5 Tracks:**\n{top_5_tracks}"
+            else:
+                description = "*No tracks found for this period.*"
 
-            top_5_tracks = "\n".join(
-                f"{i + 1}. **{track.artist} - {track.name}** ({track.playcount} plays)"
-                for i, track in enumerate(top_tracks.tracks[:5])
+            period_label = PERIOD_LABELS.get(period_val, period_val)
+            embed = discord.Embed(
+                title=f"{username_val}'s collage",
+                description=description,
+                color=EMBED_COLOR,
+                timestamp=datetime.datetime.now(datetime.timezone.utc),
             )
+            embed.set_footer(text=f"Period: {period_label}")
 
-            message = f"{username_val}'s collage\n\n**Top 5 Tracks:**\n{top_5_tracks}"
-
-            await interaction.followup.send(
-                content=message, file=discord.File(buffer, filename="collage.png")
-            )
+            if has_albums:
+                buffer = await generate_collage(self.session, top_albums.albums, grid_size_val)
+                embed.set_image(url="attachment://collage.png")
+                await interaction.followup.send(
+                    embed=embed, file=discord.File(buffer, filename="collage.png")
+                )
+            else:
+                await interaction.followup.send(embed=embed)
             logger.info(f"Successfully created collage for {username_val}")
 
         except LastFmError as e:

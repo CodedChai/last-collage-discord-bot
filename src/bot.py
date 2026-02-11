@@ -26,7 +26,10 @@ class Bot(commands.Bot):
         super().__init__(command_prefix=commands.when_mentioned, intents=intents)
 
     async def setup_hook(self):
-        self.session = aiohttp.ClientSession()
+        self.session = aiohttp.ClientSession(
+            headers={"User-Agent": "LastFmCollageDiscordBot/1.0"},
+            timeout=aiohttp.ClientTimeout(total=30, connect=10),
+        )
         await self.add_cog(CollageCog(self))
         synced = await self.tree.sync()
         logger.info(f"Synced {len(synced)} command(s)")
