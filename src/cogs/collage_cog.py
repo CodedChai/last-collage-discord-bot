@@ -120,9 +120,9 @@ class CollageModal(discord.ui.Modal, title="Create Collage"):
                 buffer = await generate_collage(
                     self.session, top_albums.albums, grid_size_val
                 )
-                embed.set_image(url="attachment://collage.png")
+                embed.set_image(url="attachment://collage.jpg")
                 await interaction.followup.send(
-                    embed=embed, file=discord.File(buffer, filename="collage.png")
+                    embed=embed, file=discord.File(buffer, filename="collage.jpg")
                 )
             else:
                 await interaction.followup.send(embed=embed)

@@ -78,12 +78,13 @@ async def _download_image(
 
             if data is not None:
                 img = Image.open(BytesIO(data))
+                img = img.convert("RGB")
 
                 if img.size != (TILE_SIZE, TILE_SIZE):
                     img = img.resize((TILE_SIZE, TILE_SIZE), Image.Resampling.LANCZOS)
 
                 buffer = BytesIO()
-                img.save(buffer, format='PNG')
+                img.save(buffer, format="JPEG", quality=92)
                 image_cache.set(url, buffer.getvalue())
 
                 return img
@@ -231,7 +232,7 @@ async def generate_collage(
         collage.paste(img, (col * TILE_SIZE, row * TILE_SIZE))
 
     buffer = BytesIO()
-    collage.save(buffer, format="PNG")
+    collage.save(buffer, format="JPEG", quality=92, progressive=True)
     buffer.seek(0)
     logger.info("Collage generated successfully")
     return buffer

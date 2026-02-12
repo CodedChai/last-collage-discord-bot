@@ -29,7 +29,10 @@ class AlbumModel(BaseModel):
         if isinstance(v, list):
             for img in reversed(v):
                 if img.get("#text"):
-                    return img["#text"]
+                    url = img["#text"]
+                    if url.endswith(".png"):
+                        url = url[:-4] + ".jpg"
+                    return url
         return None
 
 
