@@ -117,7 +117,9 @@ class CollageModal(discord.ui.Modal, title="Create Collage"):
             embed.set_footer(text=f"Period: {period_label}")
 
             if has_albums:
-                buffer = await generate_collage(self.session, top_albums.albums, grid_size_val)
+                buffer = await generate_collage(
+                    self.session, top_albums.albums, grid_size_val
+                )
                 embed.set_image(url="attachment://collage.png")
                 await interaction.followup.send(
                     embed=embed, file=discord.File(buffer, filename="collage.png")
@@ -128,10 +130,14 @@ class CollageModal(discord.ui.Modal, title="Create Collage"):
             logger.info(f"Successfully created collage for {username_val}")
 
         except LastFmError as e:
-            logger.warning(f"Last.fm API error for {username_val}: {e.message} (code {e.code})")
+            logger.warning(
+                f"Last.fm API error for {username_val}: {e.message} (code {e.code})"
+            )
             await interaction.followup.send(e.message, ephemeral=True)
         except Exception as e:
-            logger.error(f"Error creating collage for {username_val}: {e}", exc_info=True)
+            logger.error(
+                f"Error creating collage for {username_val}: {e}", exc_info=True
+            )
             try:
                 await interaction.followup.send(
                     "An error occurred while creating the collage. Please try again later.",
@@ -140,7 +146,9 @@ class CollageModal(discord.ui.Modal, title="Create Collage"):
             except:
                 pass
 
-    async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
+    async def on_error(
+        self, interaction: discord.Interaction, error: Exception
+    ) -> None:
         await interaction.response.send_message(
             "Oops! Something went wrong.", ephemeral=True
         )
@@ -151,7 +159,7 @@ class CollageCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @app_commands.command(name="create-collage")
+    @app_commands.command(name="collage")
     async def create_collage(self, interaction: discord.Interaction):
         cached_username = await get_lastfm_username(interaction.user.id)
         await interaction.response.send_modal(
