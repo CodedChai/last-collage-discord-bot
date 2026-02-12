@@ -121,11 +121,11 @@ class CollageModal(discord.ui.Modal, title="Create Collage"):
                     self.session, top_albums.albums, grid_size_val
                 )
                 embed.set_image(url="attachment://collage.jpg")
-                await interaction.followup.send(
+                await interaction.channel.send(
                     embed=embed, file=discord.File(buffer, filename="collage.jpg")
                 )
             else:
-                await interaction.followup.send(embed=embed)
+                await interaction.channel.send(embed=embed)
             await save_lastfm_username(interaction.user.id, username_val)
             logger.info(f"Successfully created collage for {username_val}")
 
