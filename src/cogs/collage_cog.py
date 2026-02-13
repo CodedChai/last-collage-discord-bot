@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import traceback
 
@@ -7,11 +6,10 @@ from discord import app_commands, ui
 from discord.ext import commands
 from pydantic import ValidationError
 from models import CollageRequest, UserPreference
-from services.lastfm_service import fetch_top_tracks, fetch_top_albums, LastFmError
+from services.lastfm_service import LastFmError
 from services.db_service import get_lastfm_username, save_user_preference
-from utils.collage_utils import resolve_grid_size
-from utils.embed_utils import PERIOD_LABELS, build_collage_embed
-from cogs.messaging import send_collage
+from utils.embed_utils import PERIOD_LABELS
+from cogs.messaging import fetch_and_send_collage
 
 logger = logging.getLogger("lastfm_collage_bot.collage_cog")
 
@@ -76,15 +74,17 @@ class CollageModal(discord.ui.Modal, title="Create Collage"):
         )
 
         try:
-            top_tracks, top_albums = await asyncio.gather(
-                fetch_top_tracks(self.session, request.username, request.period),
-                fetch_top_albums(self.session, request.username, request.period),
+            title = f"{interaction.user.display_name}'s Top {PERIOD_LABELS.get(request.period, request.period)} Collage"
+            found = await fetch_and_send_collage(
+                interaction.channel,
+                self.session,
+                request.username,
+                request.period,
+                title,
+                grid_size_str=request.grid_size,
             )
 
-            has_albums = top_albums and top_albums.albums
-            has_tracks = top_tracks and top_tracks.tracks
-
-            if not has_albums and not has_tracks:
+            if not found:
                 logger.warning(f"No data found for Last.fm user: {request.username}")
                 await interaction.followup.send(
                     "No data found for that user. Please ensure scrobbling is enabled for https://last.fm",
@@ -92,15 +92,6 @@ class CollageModal(discord.ui.Modal, title="Create Collage"):
                 )
                 return
 
-            grid_size_val = resolve_grid_size(
-                request.grid_size, top_albums.albums if has_albums else None
-            )
-
-            title = f"{interaction.user.display_name}'s Top {PERIOD_LABELS.get(request.period, request.period)} Collage"
-            embed = build_collage_embed(title, top_tracks, request.period)
-            await send_collage(
-                interaction.channel, self.session, embed, top_albums, grid_size_val
-            )
             await save_user_preference(
                 UserPreference(
                     discord_user_id=interaction.user.id,
