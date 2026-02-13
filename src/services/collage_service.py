@@ -26,7 +26,7 @@ CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "image_cache")
 CACHE_SIZE_LIMIT = int(os.getenv("IMAGE_CACHE_SIZE_MB", "500")) * 1024 * 1024
 image_cache = diskcache.Cache(CACHE_DIR, size_limit=CACHE_SIZE_LIMIT)
 
-MAX_CONCURRENT_DOWNLOADS = 3
+MAX_CONCURRENT_DOWNLOADS = 10
 IMAGE_DOWNLOAD_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"
 }
@@ -60,7 +60,8 @@ async def _download_image(
         cached = image_cache.get(url)
         if cached is not None:
             logger.info(f"Cache hit for {url}")
-            return Image.open(BytesIO(cached))
+            raw_bytes, size, mode = cached
+            return Image.frombytes(mode, size, raw_bytes)
 
         urls_to_try = [url] + [
             SIZE_PATTERN.sub(rf"\g<1>{size}\2", url) for size in FALLBACK_SIZES
@@ -78,9 +79,7 @@ async def _download_image(
                 if img.size != (TILE_SIZE, TILE_SIZE):
                     img = img.resize((TILE_SIZE, TILE_SIZE), Image.Resampling.LANCZOS)
 
-                buffer = BytesIO()
-                img.save(buffer, format="JPEG", quality=92)
-                image_cache.set(url, buffer.getvalue())
+                image_cache.set(url, (img.tobytes(), img.size, img.mode))
 
                 return img
 
