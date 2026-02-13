@@ -1,4 +1,3 @@
-import asyncio
 import datetime
 import logging
 import traceback
@@ -9,6 +8,7 @@ import discord
 from discord import app_commands, ui
 from discord.ext import commands, tasks
 from pydantic import ValidationError
+
 from models import WeeklyJoinRequest, WeeklySchedule, UserPreference
 from services.db_service import (
     save_weekly_schedule,
@@ -17,18 +17,16 @@ from services.db_service import (
     save_user_preference,
     get_weekly_subscriber_count,
 )
-from services.lastfm_service import (
-    fetch_top_artists,
-    fetch_top_albums,
-    fetch_top_tracks,
-)
 from services.summary_service import (
-    extract_listening_data,
     compute_group_summary,
     format_summary_text,
 )
+from services.weekly_collage_service import (
+    fetch_user_listening_data,
+    fetch_member_safe,
+    get_display_name,
+)
 from cogs.messaging import send_collage_from_data
-from utils.embed_utils import EMBED_COLOR
 
 logger = logging.getLogger("lastfm_collage_bot.scheduled_collage_cog")
 
@@ -162,41 +160,34 @@ class ScheduledCollageCog(commands.Cog):
         if len(user_data_list) >= 2:
             summary = compute_group_summary(user_data_list)
             text = format_summary_text(summary)
-            embed = discord.Embed(
-                title="Weekly Group Summary",
-                description=text,
-                color=EMBED_COLOR,
-                timestamp=datetime.datetime.now(datetime.timezone.utc),
-            )
-            embed.set_footer(text=f"{summary.user_count} participants this week")
-            await channel.send(embed=embed)
+            await channel.send(text)
 
     async def _post_single_collage(self, guild, channel, schedule):
-        member = None
-        try:
-            member = await guild.fetch_member(schedule.discord_user_id)
-        except Exception:
-            pass
-        display_name = member.display_name if member else schedule.lastfm_username
+        member = await fetch_member_safe(guild, schedule.discord_user_id)
+        display_name = get_display_name(member, schedule.lastfm_username)
 
-        top_artists, top_albums, top_tracks = await asyncio.gather(
-            fetch_top_artists(self.bot.session, schedule.lastfm_username, "7day"),
-            fetch_top_albums(self.bot.session, schedule.lastfm_username, "7day"),
-            fetch_top_tracks(self.bot.session, schedule.lastfm_username, "7day"),
+        listening_data = await fetch_user_listening_data(
+            self.bot.session, schedule.lastfm_username, display_name
         )
 
         title = f"{display_name}'s Weekly Collage"
-        has_albums = top_albums and top_albums.albums
-        has_tracks = top_tracks and top_tracks.tracks
+        has_data = (listening_data.albums and len(listening_data.albums) > 0) or (
+            listening_data.tracks and len(listening_data.tracks) > 0
+        )
 
-        if has_albums or has_tracks:
+        if has_data:
+            from services.lastfm_service import fetch_top_albums, fetch_top_tracks
+
+            top_tracks = await fetch_top_tracks(
+                self.bot.session, schedule.lastfm_username, "7day"
+            )
+            top_albums = await fetch_top_albums(
+                self.bot.session, schedule.lastfm_username, "7day"
+            )
+
             await send_collage_from_data(
                 channel, self.bot.session, title, top_tracks, top_albums
             )
-
-        listening_data = extract_listening_data(
-            display_name, top_artists, top_albums, top_tracks
-        )
 
         logger.info(
             f"Posted weekly collage for {schedule.lastfm_username} in guild {guild.id}"

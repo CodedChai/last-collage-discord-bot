@@ -11,8 +11,8 @@ from models import TopArtistsModel, TopAlbumsModel, TopTracksModel
 class UserListeningData:
     display_name: str
     artists: set[str]
-    albums: set[tuple[str, str]]  # (artist, album)
-    tracks: dict[tuple[str, str], int]  # (artist, track) -> playcount
+    albums: set[tuple[str, str]]
+    tracks: dict[tuple[str, str], int]
 
 
 @dataclass
@@ -21,7 +21,7 @@ class PairOverlap:
     user_b: str
     shared_artists: set[str]
     shared_albums: set[tuple[str, str]]
-    shared_tracks: set[tuple[str, str]]  # Just the track tuples, not playcounts
+    shared_tracks: set[tuple[str, str]]
 
     @property
     def total_shared(self) -> int:
@@ -34,10 +34,10 @@ class PairOverlap:
 class GroupSummary:
     most_overlapping: Optional[PairOverlap]
     biggest_outlier: Optional[str]
-    popular_artists: list[tuple[str, int]]
-    popular_albums: list[tuple[str, int]]
-    popular_tracks: list[tuple[str, int]]
-    hidden_gem: Optional[tuple[str, str, int]]  # (user, track_name, playcount)
+    popular_artists: list[tuple[str, list[str]]]
+    popular_albums: list[tuple[str, list[str]]]
+    popular_tracks: list[tuple[str, list[str]]]
+    hidden_gem: Optional[tuple[str, str, int]]
     user_count: int
 
 
@@ -88,7 +88,6 @@ def compute_group_summary(users: list[UserListeningData]) -> GroupSummary:
             user_count=0,
         )
 
-    # Compute all pairwise overlaps
     best_overlap: Optional[PairOverlap] = None
     overlap_scores: dict[str, int] = {u.display_name: 0 for u in users}
 
@@ -100,51 +99,58 @@ def compute_group_summary(users: list[UserListeningData]) -> GroupSummary:
             if best_overlap is None or overlap.total_shared > best_overlap.total_shared:
                 best_overlap = overlap
 
-    # Find biggest outlier (lowest overlap score among 2+ users)
     biggest_outlier: Optional[str] = None
     if len(users) >= 2:
         biggest_outlier = min(overlap_scores, key=lambda k: overlap_scores[k])
-        # If everyone has the same score, no meaningful outlier
         if all(v == overlap_scores[biggest_outlier] for v in overlap_scores.values()):
             biggest_outlier = None
 
-    # Popular items: count how many users listen to each
-    artist_counter: Counter[str] = Counter()
-    album_counter: Counter[str] = Counter()
-    track_counter: Counter[str] = Counter()
-    track_plays: dict[
-        tuple[str, str], tuple[str, int]
-    ] = {}  # track -> (user, playcount)
+    artist_users: dict[str, list[str]] = {}
+    album_users: dict[str, list[str]] = {}
+    track_users: dict[str, list[str]] = {}
+    track_plays: dict[tuple[str, str], tuple[str, int]] = {}
 
     for u in users:
         for a in u.artists:
-            artist_counter[a] += 1
+            if a not in artist_users:
+                artist_users[a] = []
+            artist_users[a].append(u.display_name)
+
         for a in u.albums:
-            album_counter[f"{a[0]} - {a[1]}"] += 1
+            album_name = f"{a[0]} - {a[1]}"
+            if album_name not in album_users:
+                album_users[album_name] = []
+            album_users[album_name].append(u.display_name)
+
         for track_tuple, playcount in u.tracks.items():
             track_name = f"{track_tuple[0]} - {track_tuple[1]}"
-            track_counter[track_name] += 1
-            # Track the user and playcount for hidden gem detection
+            if track_name not in track_users:
+                track_users[track_name] = []
+            track_users[track_name].append(u.display_name)
+
             if track_tuple not in track_plays:
                 track_plays[track_tuple] = (u.display_name, playcount)
 
-    # Only include items with 2+ listeners
-    popular_artists = [
-        (name, count) for name, count in artist_counter.most_common() if count >= 2
-    ]
-    popular_albums = [
-        (name, count) for name, count in album_counter.most_common() if count >= 2
-    ]
-    popular_tracks = [
-        (name, count) for name, count in track_counter.most_common() if count >= 2
-    ]
+    popular_artists = sorted(
+        [(name, user_list) for name, user_list in artist_users.items() if len(user_list) >= 2],
+        key=lambda x: len(x[1]),
+        reverse=True
+    )
+    popular_albums = sorted(
+        [(name, user_list) for name, user_list in album_users.items() if len(user_list) >= 2],
+        key=lambda x: len(x[1]),
+        reverse=True
+    )
+    popular_tracks = sorted(
+        [(name, user_list) for name, user_list in track_users.items() if len(user_list) >= 2],
+        key=lambda x: len(x[1]),
+        reverse=True
+    )
 
-    # Hidden gem: highest playcount track with only 1 listener and >10 plays
     hidden_gem: Optional[tuple[str, str, int]] = None
     for track_tuple, (user, playcount) in track_plays.items():
         track_name = f"{track_tuple[0]} - {track_tuple[1]}"
-        # Only 1 listener and >10 plays
-        if track_counter[track_name] == 1 and playcount > 10:
+        if len(track_users.get(track_name, [])) == 1 and playcount > 10:
             if hidden_gem is None or playcount > hidden_gem[2]:
                 hidden_gem = (user, track_name, playcount)
 
@@ -162,11 +168,13 @@ def compute_group_summary(users: list[UserListeningData]) -> GroupSummary:
 def format_summary_text(summary: GroupSummary) -> str:
     lines: list[str] = []
 
+    lines.append("**Weekly Group Summary**\n")
+
     if summary.most_overlapping:
         o = summary.most_overlapping
         lines.append(
             f"🎵 **{o.user_a}** and **{o.user_b}** have the most in common "
-            f"({o.total_shared} shared)!"
+            f"({o.total_shared} shared items)!"
         )
     else:
         lines.append("🎵 Everyone has pretty unique taste — no overlap found!")
@@ -177,31 +185,32 @@ def format_summary_text(summary: GroupSummary) -> str:
         )
 
     if summary.popular_artists:
-        top = ", ".join(
-            f"**{name}** ({count})" for name, count in summary.popular_artists[:5]
-        )
-        lines.append(f"🏆 group favorite artists: {top}")
+        lines.append("\n🏆 **Group Favorite Artists:**")
+        for name, user_list in summary.popular_artists[:5]:
+            users_str = ", ".join(user_list)
+            lines.append(f"• {name} ({users_str})")
 
     if summary.popular_albums:
-        top = ", ".join(
-            f"**{name}** ({count})" for name, count in summary.popular_albums[:5]
-        )
-        lines.append(f"💿 group favorite albums: {top}")
+        lines.append("\n💿 **Group Favorite Albums:**")
+        for name, user_list in summary.popular_albums[:5]:
+            users_str = ", ".join(user_list)
+            lines.append(f"• {name} ({users_str})")
 
     if summary.popular_tracks:
-        formatted_tracks = []
-        for name, count in summary.popular_tracks[:5]:
-            # name is already in "Artist - Track" format
+        lines.append("\n🎶 **Group Favorite Tracks:**")
+        for name, user_list in summary.popular_tracks[:5]:
+            users_str = ", ".join(user_list)
             youtube_url = f"https://www.youtube.com/results?search_query={quote_plus(name.replace(' - ', ' '))}"
-            formatted_tracks.append(f"[{name}]({youtube_url}) ({count})")
-        lines.append(f"🎶 group favorite tracks: {', '.join(formatted_tracks)}")
+            lines.append(f"• [{name}](<{youtube_url}>) ({users_str})")
 
     if summary.hidden_gem:
         user, track_name, playcount = summary.hidden_gem
-        # track_name is in "Artist - Track" format
         youtube_url = f"https://www.youtube.com/results?search_query={quote_plus(track_name.replace(' - ', ' '))}"
         lines.append(
-            f"💎 hidden gem: **{user}** has [{track_name}]({youtube_url}) on repeat ({playcount} plays)!"
+            f"\n💎 **Hidden Gem:**\n"
+            f"**{user}** has [{track_name}](<{youtube_url}>) on repeat ({playcount} plays)!"
         )
+
+    lines.append(f"\n---\n*{summary.user_count} participants this week*")
 
     return "\n".join(lines)
