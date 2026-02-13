@@ -1,4 +1,3 @@
-import asyncio
 import datetime
 import logging
 import traceback
@@ -9,8 +8,6 @@ from discord import app_commands, ui
 from discord.ext import commands, tasks
 from pydantic import ValidationError
 from models import WeeklyJoinRequest, WeeklySchedule, UserPreference
-from services.lastfm_service import fetch_top_tracks, fetch_top_albums
-from services.collage_service import determine_dynamic_grid_size
 from services.db_service import (
     save_weekly_schedule,
     get_all_weekly_schedules,
@@ -18,7 +15,7 @@ from services.db_service import (
     save_user_preference,
     get_weekly_subscriber_count,
 )
-from cogs.collage_utils import build_collage_embed, send_collage
+from cogs.messaging import fetch_and_send_collage
 
 logger = logging.getLogger("lastfm_collage_bot.scheduled_collage_cog")
 
@@ -116,54 +113,38 @@ class ScheduledCollageCog(commands.Cog):
         schedules = await get_all_weekly_schedules()
         for schedule in schedules:
             try:
-                guild = self.bot.get_guild(schedule.guild_id)
-                if guild is None:
-                    continue
-
-                channel = guild.get_channel(schedule.channel_id)
-                if channel is None:
-                    continue
-
-                member = None
-                try:
-                    member = await guild.fetch_member(schedule.discord_user_id)
-                except Exception:
-                    pass
-                display_name = (
-                    member.display_name if member else schedule.lastfm_username
-                )
-
-                top_tracks, top_albums = await asyncio.gather(
-                    fetch_top_tracks(
-                        self.bot.session, schedule.lastfm_username, "7day"
-                    ),
-                    fetch_top_albums(
-                        self.bot.session, schedule.lastfm_username, "7day"
-                    ),
-                )
-
-                grid_size = (
-                    determine_dynamic_grid_size(top_albums.albums)
-                    if top_albums and top_albums.albums
-                    else (1, 1)
-                )
-
-                title = f"{display_name}'s Weekly Collage"
-                embed = build_collage_embed(title, top_tracks, "7day")
-                await send_collage(
-                    channel, self.bot.session, embed, top_albums, grid_size
-                )
-
-                logger.info(
-                    f"Posted weekly collage for {schedule.lastfm_username} in guild {schedule.guild_id}"
-                )
-
+                await self._post_single_collage(schedule)
             except Exception:
                 logger.error(
                     f"Error posting weekly collage for {schedule.lastfm_username}",
                     exc_info=True,
                 )
                 continue
+
+    async def _post_single_collage(self, schedule):
+        guild = self.bot.get_guild(schedule.guild_id)
+        if guild is None:
+            return
+
+        channel = guild.get_channel(schedule.channel_id)
+        if channel is None:
+            return
+
+        member = None
+        try:
+            member = await guild.fetch_member(schedule.discord_user_id)
+        except Exception:
+            pass
+        display_name = member.display_name if member else schedule.lastfm_username
+
+        title = f"{display_name}'s Weekly Collage"
+        await fetch_and_send_collage(
+            channel, self.bot.session, schedule.lastfm_username, "7day", title
+        )
+
+        logger.info(
+            f"Posted weekly collage for {schedule.lastfm_username} in guild {schedule.guild_id}"
+        )
 
     @post_weekly_collages.before_loop
     async def before_post_weekly_collages(self):

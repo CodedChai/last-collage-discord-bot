@@ -68,12 +68,19 @@ async def save_weekly_schedule(schedule: WeeklySchedule):
                 channel_id = excluded.channel_id,
                 discord_user_id = excluded.discord_user_id
             """,
-            (schedule.lastfm_username, schedule.guild_id, schedule.channel_id, schedule.discord_user_id),
+            (
+                schedule.lastfm_username,
+                schedule.guild_id,
+                schedule.channel_id,
+                schedule.discord_user_id,
+            ),
         )
         await db.commit()
 
 
-async def get_weekly_schedules_for_channel(guild_id: int, channel_id: int) -> list[WeeklySchedule]:
+async def get_weekly_schedules_for_channel(
+    guild_id: int, channel_id: int
+) -> list[WeeklySchedule]:
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute(
             "SELECT lastfm_username, guild_id, channel_id, discord_user_id FROM weekly_schedules WHERE guild_id = ? AND channel_id = ?",
@@ -93,9 +100,7 @@ async def get_weekly_schedules_for_channel(guild_id: int, channel_id: int) -> li
 
 async def get_scheduled_guild_ids() -> list[int]:
     async with aiosqlite.connect(DB_PATH) as db:
-        cursor = await db.execute(
-            "SELECT DISTINCT guild_id FROM weekly_schedules"
-        )
+        cursor = await db.execute("SELECT DISTINCT guild_id FROM weekly_schedules")
         rows = await cursor.fetchall()
         return [row[0] for row in rows]
 
