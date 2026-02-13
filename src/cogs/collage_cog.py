@@ -7,6 +7,7 @@ from discord import app_commands, ui
 from discord.ext import commands
 from services.lastfm_service import fetch_top_tracks, fetch_top_albums, LastFmError
 from services.db_service import get_lastfm_username, save_lastfm_username
+from services.collage_service import determine_dynamic_grid_size
 from cogs.collage_utils import PERIOD_LABELS, build_collage_embed, send_collage
 
 logger = logging.getLogger("lastfm_collage_bot.collage_cog")
@@ -21,8 +22,9 @@ PERIOD_OPTIONS = [
 ]
 
 GRID_SIZE_OPTIONS = [
+    discord.SelectOption(label="Dynamic", value="dynamic", default=True),
     discord.SelectOption(label="2x2", value="2"),
-    discord.SelectOption(label="3x3", value="3", default=True),
+    discord.SelectOption(label="3x3", value="3"),
     discord.SelectOption(label="4x4", value="4"),
     discord.SelectOption(label="5x5", value="5"),
 ]
@@ -51,11 +53,12 @@ class CollageModal(discord.ui.Modal, title="Create Collage"):
     async def on_submit(self, interaction: discord.Interaction):
         username_val = self.username.value
         period_val = self.period.component.values[0]
-        grid_size_val = int(self.grid_size.component.values[0])
+        grid_size_raw = self.grid_size.component.values[0]
+        is_dynamic = grid_size_raw == "dynamic"
 
         logger.info(
             f"Collage creation requested for user: {username_val}, period: {period_val}, "
-            f"grid: {grid_size_val}x{grid_size_val} by {interaction.user}"
+            f"grid: {'dynamic' if is_dynamic else f'{grid_size_raw}x{grid_size_raw}'} by {interaction.user}"
         )
 
         await interaction.response.send_message(
@@ -79,6 +82,11 @@ class CollageModal(discord.ui.Modal, title="Create Collage"):
                     ephemeral=True,
                 )
                 return
+
+            if is_dynamic:
+                grid_size_val = determine_dynamic_grid_size(top_albums.albums) if has_albums else (1, 1)
+            else:
+                grid_size_val = int(grid_size_raw)
 
             embed = build_collage_embed(
                 interaction.user.display_name, top_tracks, period_val

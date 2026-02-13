@@ -27,6 +27,19 @@ CACHE_SIZE_LIMIT = int(os.getenv("IMAGE_CACHE_SIZE_MB", "500")) * 1024 * 1024
 image_cache = diskcache.Cache(CACHE_DIR, size_limit=CACHE_SIZE_LIMIT)
 
 DEFAULT_GRID_SIZE = 3
+
+DYNAMIC_GRID_SIZES = [
+    (1, 1),   # 1
+    (2, 2),   # 4
+    (3, 2),   # 6
+    (3, 3),   # 9
+    (4, 3),   # 12
+    (4, 4),   # 16
+    (5, 4),   # 20
+    (5, 5),   # 25
+    (6, 5),   # 30
+    (6, 6),   # 36
+]
 TILE_SIZE = 300
 MAX_CONCURRENT_DOWNLOADS = 3
 IMAGE_DOWNLOAD_HEADERS = {
@@ -191,14 +204,39 @@ def _create_placeholder() -> Image.Image:
     return Image.new("RGB", (TILE_SIZE, TILE_SIZE), (30, 30, 30))
 
 
+def determine_dynamic_grid_size(albums: list[AlbumModel]) -> tuple[int, int]:
+    best = DYNAMIC_GRID_SIZES[0]
+    for i, (cols, rows) in enumerate(DYNAMIC_GRID_SIZES):
+        count = cols * rows
+        if len(albums) < count:
+            break
+        if i > 0:
+            prev_count = best[0] * best[1]
+            first_new_album = albums[prev_count]
+            if first_new_album.playcount <= 1:
+                break
+        best = (cols, rows)
+    logger.info(
+        f"Dynamic grid size determined: {best[0]}x{best[1]} "
+        f"({best[0] * best[1]} albums from {len(albums)} available)"
+    )
+    return best
+
+
 async def generate_collage(
     session: aiohttp.ClientSession,
     albums: list[AlbumModel],
-    grid_size: int = DEFAULT_GRID_SIZE,
+    grid_size: int | tuple[int, int] = DEFAULT_GRID_SIZE,
 ) -> BytesIO:
-    selected_albums = albums[: grid_size * grid_size]
+    if isinstance(grid_size, tuple):
+        grid_cols, grid_rows = grid_size
+    else:
+        grid_cols = grid_rows = grid_size
+
+    total_slots = grid_cols * grid_rows
+    selected_albums = albums[:total_slots]
     logger.info(
-        f"Generating {grid_size}x{grid_size} collage with {len(selected_albums)} albums"
+        f"Generating {grid_cols}x{grid_rows} collage with {len(selected_albums)} albums"
     )
 
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS)
@@ -221,14 +259,15 @@ async def generate_collage(
         f"Successfully downloaded {successful_downloads}/{len(selected_albums)} album cover images"
     )
 
-    collage_size = grid_size * TILE_SIZE
-    collage = Image.new("RGB", (collage_size, collage_size), (0, 0, 0))
+    collage = Image.new(
+        "RGB", (grid_cols * TILE_SIZE, grid_rows * TILE_SIZE), (0, 0, 0)
+    )
 
     for i, album in enumerate(selected_albums):
         img = images[i] if images[i] is not None else _create_placeholder()
         _add_overlay(img, album)
 
-        row, col = divmod(i, grid_size)
+        row, col = divmod(i, grid_cols)
         collage.paste(img, (col * TILE_SIZE, row * TILE_SIZE))
 
     buffer = BytesIO()

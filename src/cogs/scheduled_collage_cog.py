@@ -8,6 +8,7 @@ import discord
 from discord import app_commands, ui
 from discord.ext import commands, tasks
 from services.lastfm_service import fetch_top_tracks, fetch_top_albums
+from services.collage_service import determine_dynamic_grid_size
 from services.db_service import (
     save_weekly_schedule,
     get_all_weekly_schedules,
@@ -110,8 +111,10 @@ class ScheduledCollageCog(commands.Cog):
                     fetch_top_albums(self.bot.session, lastfm_username, "7day"),
                 )
 
+                grid_size = determine_dynamic_grid_size(top_albums.albums) if top_albums and top_albums.albums else (1, 1)
+
                 embed = build_collage_embed(display_name, top_tracks, "7day")
-                await send_collage(channel, self.bot.session, embed, top_albums, 3)
+                await send_collage(channel, self.bot.session, embed, top_albums, grid_size)
 
                 logger.info(
                     f"Posted weekly collage for {lastfm_username} in guild {guild_id}"
