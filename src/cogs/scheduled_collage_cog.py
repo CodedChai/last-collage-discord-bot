@@ -23,7 +23,7 @@ logger = logging.getLogger("lastfm_collage_bot.scheduled_collage_cog")
 CT = ZoneInfo("America/Chicago")
 
 
-class ScheduleWeeklyModal(discord.ui.Modal, title="Schedule Weekly Collage"):
+class ScheduleWeeklyModal(discord.ui.Modal, title="Join Weekly Collage"):
     username = ui.TextInput(
         label="Last.fm Username",
         placeholder="Enter your Last.fm username...",
@@ -46,11 +46,11 @@ class ScheduleWeeklyModal(discord.ui.Modal, title="Schedule Weekly Collage"):
         await save_lastfm_username(interaction.user.id, username_val)
         count = await get_weekly_subscriber_count(self.guild_id, self.channel_id)
         await interaction.response.send_message(
-            f"✅ Scheduled! Every Monday at 9 AM CT, a 7-day collage for **{username_val}** will be posted in this channel.",
+            f"✅ Welcome! Every Monday at 9 AM CT, a 7-day collage for **{username_val}** will be posted in this channel.",
             ephemeral=True,
         )
         await interaction.channel.send(
-            f"🎶 **{interaction.user.display_name}** has joined the weekly jam! Now there are **{count}** participants. Want to join the fun? Use `/schedule-weekly-collage` to get your own weekly collage!"
+            f"🎶 **{interaction.user.display_name}** has joined the weekly jam! Now there are **{count}** participants. Want to join the fun? Use `/join-weekly-collage` to get your own weekly collage!"
         )
 
     async def on_error(
@@ -72,7 +72,7 @@ class ScheduledCollageCog(commands.Cog):
     async def cog_unload(self):
         self.post_weekly_collages.cancel()
 
-    @app_commands.command(name="schedule-weekly-collage")
+    @app_commands.command(name="join-weekly-collage")
     async def schedule_weekly_collage(self, interaction: discord.Interaction):
         cached_username = await get_lastfm_username(interaction.user.id)
         await interaction.response.send_modal(
