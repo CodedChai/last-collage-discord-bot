@@ -13,10 +13,11 @@ class ViewCollageCog(commands.Cog):
 
     @app_commands.command(name="view-weekly-collage")
     async def view_weekly_collage(self, interaction):
-        usernames = await get_weekly_schedules_for_channel(
+        schedules = await get_weekly_schedules_for_channel(
             interaction.guild_id, interaction.channel_id
         )
-        if usernames:
+        if schedules:
+            usernames = [s.lastfm_username for s in schedules]
             await interaction.response.send_message(
                 f"Scheduled usernames for this channel: {', '.join(usernames)}",
                 ephemeral=True,

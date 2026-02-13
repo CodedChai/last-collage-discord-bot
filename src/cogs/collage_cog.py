@@ -5,8 +5,10 @@ import traceback
 import discord
 from discord import app_commands, ui
 from discord.ext import commands
+from pydantic import ValidationError
+from models import CollageRequest, UserPreference
 from services.lastfm_service import fetch_top_tracks, fetch_top_albums, LastFmError
-from services.db_service import get_lastfm_username, save_lastfm_username
+from services.db_service import get_lastfm_username, save_user_preference
 from services.collage_service import determine_dynamic_grid_size
 from cogs.collage_utils import PERIOD_LABELS, build_collage_embed, send_collage
 
@@ -51,32 +53,40 @@ class CollageModal(discord.ui.Modal, title="Create Collage"):
             self.username.default = default_username
 
     async def on_submit(self, interaction: discord.Interaction):
-        username_val = self.username.value
-        period_val = self.period.component.values[0]
-        grid_size_raw = self.grid_size.component.values[0]
-        is_dynamic = grid_size_raw == "dynamic"
+        try:
+            request = CollageRequest(
+                username=self.username.value,
+                period=self.period.component.values[0],
+                grid_size=self.grid_size.component.values[0],
+            )
+        except ValidationError as e:
+            error_msg = e.errors()[0]["msg"] if e.errors() else "Invalid input."
+            await interaction.response.send_message(error_msg, ephemeral=True)
+            return
+
+        is_dynamic = request.grid_size == "dynamic"
 
         logger.info(
-            f"Collage creation requested for user: {username_val}, period: {period_val}, "
-            f"grid: {'dynamic' if is_dynamic else f'{grid_size_raw}x{grid_size_raw}'} by {interaction.user}"
+            f"Collage creation requested for user: {request.username}, period: {request.period}, "
+            f"grid: {'dynamic' if is_dynamic else f'{request.grid_size}x{request.grid_size}'} by {interaction.user}"
         )
 
         await interaction.response.send_message(
-            f"Creating collage for {username_val}. Please wait a moment.",
+            f"Creating collage for {request.username}. Please wait a moment.",
             ephemeral=True,
         )
 
         try:
             top_tracks, top_albums = await asyncio.gather(
-                fetch_top_tracks(self.session, username_val, period_val),
-                fetch_top_albums(self.session, username_val, period_val),
+                fetch_top_tracks(self.session, request.username, request.period),
+                fetch_top_albums(self.session, request.username, request.period),
             )
 
             has_albums = top_albums and top_albums.albums
             has_tracks = top_tracks and top_tracks.tracks
 
             if not has_albums and not has_tracks:
-                logger.warning(f"No data found for Last.fm user: {username_val}")
+                logger.warning(f"No data found for Last.fm user: {request.username}")
                 await interaction.followup.send(
                     "No data found for that user. Please ensure scrobbling is enabled for https://last.fm",
                     ephemeral=True,
@@ -90,24 +100,26 @@ class CollageModal(discord.ui.Modal, title="Create Collage"):
                     else (1, 1)
                 )
             else:
-                grid_size_val = int(grid_size_raw)
+                grid_size_val = int(request.grid_size)
 
-            title = f"{interaction.user.display_name}'s Top {PERIOD_LABELS.get(period_val, period_val)} Collage"
-            embed = build_collage_embed(title, top_tracks, period_val)
+            title = f"{interaction.user.display_name}'s Top {PERIOD_LABELS.get(request.period, request.period)} Collage"
+            embed = build_collage_embed(title, top_tracks, request.period)
             await send_collage(
                 interaction.channel, self.session, embed, top_albums, grid_size_val
             )
-            await save_lastfm_username(interaction.user.id, username_val)
-            logger.info(f"Successfully created collage for {username_val}")
+            await save_user_preference(
+                UserPreference(discord_user_id=interaction.user.id, lastfm_username=request.username)
+            )
+            logger.info(f"Successfully created collage for {request.username}")
 
         except LastFmError as e:
             logger.warning(
-                f"Last.fm API error for {username_val}: {e.message} (code {e.code})"
+                f"Last.fm API error for {request.username}: {e.message} (code {e.code})"
             )
             await interaction.followup.send(e.message, ephemeral=True)
         except Exception as e:
             logger.error(
-                f"Error creating collage for {username_val}: {e}", exc_info=True
+                f"Error creating collage for {request.username}: {e}", exc_info=True
             )
             try:
                 await interaction.followup.send(

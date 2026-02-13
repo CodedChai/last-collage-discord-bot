@@ -7,13 +7,15 @@ from zoneinfo import ZoneInfo
 import discord
 from discord import app_commands, ui
 from discord.ext import commands, tasks
+from pydantic import ValidationError
+from models import WeeklyJoinRequest, UserPreference
 from services.lastfm_service import fetch_top_tracks, fetch_top_albums
 from services.collage_service import determine_dynamic_grid_size
 from services.db_service import (
     save_weekly_schedule,
     get_all_weekly_schedules,
     get_lastfm_username,
-    save_lastfm_username,
+    save_user_preference,
     get_weekly_subscriber_count,
 )
 from cogs.collage_utils import build_collage_embed, send_collage
@@ -39,14 +41,25 @@ class ScheduleWeeklyModal(discord.ui.Modal, title="Join Weekly Collage"):
             self.username.default = default_username
 
     async def on_submit(self, interaction: discord.Interaction):
-        username_val = self.username.value
-        await save_weekly_schedule(
-            username_val, self.guild_id, self.channel_id, interaction.user.id
+        try:
+            request = WeeklyJoinRequest(
+                username=self.username.value,
+                guild_id=self.guild_id,
+                channel_id=self.channel_id,
+                discord_user_id=interaction.user.id,
+            )
+        except ValidationError as e:
+            error_msg = e.errors()[0]["msg"] if e.errors() else "Invalid input."
+            await interaction.response.send_message(error_msg, ephemeral=True)
+            return
+
+        await save_weekly_schedule(request)
+        await save_user_preference(
+            UserPreference(discord_user_id=interaction.user.id, lastfm_username=request.username)
         )
-        await save_lastfm_username(interaction.user.id, username_val)
         count = await get_weekly_subscriber_count(self.guild_id, self.channel_id)
         await interaction.response.send_message(
-            f"✅ Welcome! Every Monday at 9 AM CT, a 7-day collage for **{username_val}** will be posted in this channel.",
+            f"✅ Welcome! Every Monday at 9 AM CT, a 7-day collage for **{request.username}** will be posted in this channel.",
             ephemeral=True,
         )
         await interaction.channel.send(
@@ -89,30 +102,25 @@ class ScheduledCollageCog(commands.Cog):
     async def _post_weekly_collages(self):
         schedules = await get_all_weekly_schedules()
         for schedule in schedules:
-            lastfm_username = schedule["lastfm_username"]
-            guild_id = schedule["guild_id"]
-            channel_id = schedule["channel_id"]
-            discord_user_id = schedule["discord_user_id"]
-
             try:
-                guild = self.bot.get_guild(guild_id)
+                guild = self.bot.get_guild(schedule.guild_id)
                 if guild is None:
                     continue
 
-                channel = guild.get_channel(channel_id)
+                channel = guild.get_channel(schedule.channel_id)
                 if channel is None:
                     continue
 
                 member = None
                 try:
-                    member = await guild.fetch_member(discord_user_id)
+                    member = await guild.fetch_member(schedule.discord_user_id)
                 except Exception:
                     pass
-                display_name = member.display_name if member else lastfm_username
+                display_name = member.display_name if member else schedule.lastfm_username
 
                 top_tracks, top_albums = await asyncio.gather(
-                    fetch_top_tracks(self.bot.session, lastfm_username, "7day"),
-                    fetch_top_albums(self.bot.session, lastfm_username, "7day"),
+                    fetch_top_tracks(self.bot.session, schedule.lastfm_username, "7day"),
+                    fetch_top_albums(self.bot.session, schedule.lastfm_username, "7day"),
                 )
 
                 grid_size = (
@@ -128,12 +136,12 @@ class ScheduledCollageCog(commands.Cog):
                 )
 
                 logger.info(
-                    f"Posted weekly collage for {lastfm_username} in guild {guild_id}"
+                    f"Posted weekly collage for {schedule.lastfm_username} in guild {schedule.guild_id}"
                 )
 
             except Exception:
                 logger.error(
-                    f"Error posting weekly collage for {lastfm_username}",
+                    f"Error posting weekly collage for {schedule.lastfm_username}",
                     exc_info=True,
                 )
                 continue
