@@ -132,13 +132,19 @@ async def test_save_weekly_schedule_upsert(db):
 @pytest.mark.asyncio
 async def test_get_scheduled_guild_ids(db):
     await save_weekly_schedule(
-        WeeklySchedule(lastfm_username="a", guild_id=1, channel_id=10, discord_user_id=100)
+        WeeklySchedule(
+            lastfm_username="a", guild_id=1, channel_id=10, discord_user_id=100
+        )
     )
     await save_weekly_schedule(
-        WeeklySchedule(lastfm_username="b", guild_id=2, channel_id=20, discord_user_id=200)
+        WeeklySchedule(
+            lastfm_username="b", guild_id=2, channel_id=20, discord_user_id=200
+        )
     )
     await save_weekly_schedule(
-        WeeklySchedule(lastfm_username="c", guild_id=1, channel_id=11, discord_user_id=300)
+        WeeklySchedule(
+            lastfm_username="c", guild_id=1, channel_id=11, discord_user_id=300
+        )
     )
     guild_ids = await get_scheduled_guild_ids()
     assert sorted(guild_ids) == [1, 2]
@@ -150,13 +156,19 @@ async def test_get_scheduled_guild_ids(db):
 @pytest.mark.asyncio
 async def test_get_weekly_subscriber_count(db):
     await save_weekly_schedule(
-        WeeklySchedule(lastfm_username="a", guild_id=1, channel_id=10, discord_user_id=100)
+        WeeklySchedule(
+            lastfm_username="a", guild_id=1, channel_id=10, discord_user_id=100
+        )
     )
     await save_weekly_schedule(
-        WeeklySchedule(lastfm_username="b", guild_id=1, channel_id=10, discord_user_id=200)
+        WeeklySchedule(
+            lastfm_username="b", guild_id=1, channel_id=10, discord_user_id=200
+        )
     )
     await save_weekly_schedule(
-        WeeklySchedule(lastfm_username="c", guild_id=1, channel_id=99, discord_user_id=300)
+        WeeklySchedule(
+            lastfm_username="c", guild_id=1, channel_id=99, discord_user_id=300
+        )
     )
     count = await get_weekly_subscriber_count(1, 10)
     assert count == 2
@@ -168,7 +180,9 @@ async def test_get_weekly_subscriber_count(db):
 @pytest.mark.asyncio
 async def test_delete_weekly_schedule_returns_true(db):
     await save_weekly_schedule(
-        WeeklySchedule(lastfm_username="a", guild_id=1, channel_id=10, discord_user_id=100)
+        WeeklySchedule(
+            lastfm_username="a", guild_id=1, channel_id=10, discord_user_id=100
+        )
     )
     result = await delete_weekly_schedule(100, 1)
     assert result is True
@@ -183,7 +197,9 @@ async def test_delete_weekly_schedule_returns_false_when_missing(db):
 @pytest.mark.asyncio
 async def test_delete_weekly_schedule_removes_from_queries(db):
     await save_weekly_schedule(
-        WeeklySchedule(lastfm_username="a", guild_id=1, channel_id=10, discord_user_id=100)
+        WeeklySchedule(
+            lastfm_username="a", guild_id=1, channel_id=10, discord_user_id=100
+        )
     )
     await delete_weekly_schedule(100, 1)
     results = await get_weekly_schedules_for_channel(1, 10)
@@ -198,10 +214,14 @@ async def test_delete_weekly_schedule_removes_from_queries(db):
 @pytest.mark.asyncio
 async def test_get_all_weekly_schedules(db):
     await save_weekly_schedule(
-        WeeklySchedule(lastfm_username="a", guild_id=1, channel_id=10, discord_user_id=100)
+        WeeklySchedule(
+            lastfm_username="a", guild_id=1, channel_id=10, discord_user_id=100
+        )
     )
     await save_weekly_schedule(
-        WeeklySchedule(lastfm_username="b", guild_id=2, channel_id=20, discord_user_id=200)
+        WeeklySchedule(
+            lastfm_username="b", guild_id=2, channel_id=20, discord_user_id=200
+        )
     )
     all_schedules = await get_all_weekly_schedules()
     assert len(all_schedules) == 2

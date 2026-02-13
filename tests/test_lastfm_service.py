@@ -118,9 +118,7 @@ VALID_TOP_ALBUMS_RESPONSE = {
                 "artist": {"name": "Artist"},
                 "@attr": {"rank": 1},
                 "playcount": 5,
-                "image": [
-                    {"#text": "http://img.com/pic.jpg", "size": "large"}
-                ],
+                "image": [{"#text": "http://img.com/pic.jpg", "size": "large"}],
             }
         ]
     }

@@ -17,13 +17,23 @@ from models import TopTracksModel, TrackModel
 
 def _make_track(name="Song", artist="Artist", rank=1, playcount=10):
     return TrackModel.model_validate(
-        {"name": name, "artist": {"name": artist}, "@attr": {"rank": rank}, "playcount": playcount}
+        {
+            "name": name,
+            "artist": {"name": artist},
+            "@attr": {"rank": rank},
+            "playcount": playcount,
+        }
     )
 
 
 def _make_top_tracks(tracks_data):
     raw = [
-        {"name": t[0], "artist": {"name": t[1]}, "@attr": {"rank": i + 1}, "playcount": t[2]}
+        {
+            "name": t[0],
+            "artist": {"name": t[1]},
+            "@attr": {"rank": i + 1},
+            "playcount": t[2],
+        }
         for i, t in enumerate(tracks_data)
     ]
     return TopTracksModel.model_validate({"toptracks": {"track": raw}})

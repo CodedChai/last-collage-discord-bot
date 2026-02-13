@@ -63,8 +63,7 @@ async def _download_image(
             return Image.open(BytesIO(cached))
 
         urls_to_try = [url] + [
-            SIZE_PATTERN.sub(rf"\g<1>{size}\2", url)
-            for size in FALLBACK_SIZES
+            SIZE_PATTERN.sub(rf"\g<1>{size}\2", url) for size in FALLBACK_SIZES
         ]
 
         for try_url in urls_to_try:

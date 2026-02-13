@@ -24,13 +24,25 @@ class TestSendCollage:
         from models import TopAlbumsModel
 
         top_albums = TopAlbumsModel.model_validate(
-            {"topalbums": {"album": [
-                {"name": "Album", "artist": {"name": "Art"}, "@attr": {"rank": 1}, "playcount": 5, "image": []},
-            ]}}
+            {
+                "topalbums": {
+                    "album": [
+                        {
+                            "name": "Album",
+                            "artist": {"name": "Art"},
+                            "@attr": {"rank": 1},
+                            "playcount": 5,
+                            "image": [],
+                        },
+                    ]
+                }
+            }
         )
 
         fake_buffer = BytesIO(b"fake image data")
-        with patch("cogs.messaging.generate_collage", return_value=fake_buffer) as mock_gen:
+        with patch(
+            "cogs.messaging.generate_collage", return_value=fake_buffer
+        ) as mock_gen:
             await send_collage(destination, session, embed, top_albums, 3)
             mock_gen.assert_awaited_once_with(session, top_albums.albums, 3)
 

@@ -30,9 +30,7 @@ class TrackModel(BaseModel):
 
 
 class TopTracksModel(BaseModel):
-    tracks: List[TrackModel] = Field(
-        validation_alias=AliasPath("toptracks", "track")
-    )
+    tracks: List[TrackModel] = Field(validation_alias=AliasPath("toptracks", "track"))
 
 
 class AlbumModel(BaseModel):
@@ -56,9 +54,7 @@ class AlbumModel(BaseModel):
 
 
 class TopAlbumsModel(BaseModel):
-    albums: List[AlbumModel] = Field(
-        validation_alias=AliasPath("topalbums", "album")
-    )
+    albums: List[AlbumModel] = Field(validation_alias=AliasPath("topalbums", "album"))
 
 
 # --- User input models ---
