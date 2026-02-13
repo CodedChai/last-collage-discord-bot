@@ -1,28 +1,15 @@
 import asyncio
-import datetime
 import logging
 import traceback
-from urllib.parse import quote_plus
 
 import discord
 from discord import app_commands, ui
 from discord.ext import commands
 from services.lastfm_service import fetch_top_tracks, fetch_top_albums, LastFmError
-from services.collage_service import generate_collage
 from services.db_service import get_lastfm_username, save_lastfm_username
+from cogs.collage_utils import PERIOD_LABELS, build_collage_embed, send_collage
 
 logger = logging.getLogger("lastfm_collage_bot.collage_cog")
-
-EMBED_COLOR = 0x1DB954
-
-PERIOD_LABELS = {
-    "7day": "7 Days",
-    "1month": "1 Month",
-    "3month": "3 Months",
-    "6month": "6 Months",
-    "12month": "12 Months",
-    "overall": "Overall",
-}
 
 PERIOD_OPTIONS = [
     discord.SelectOption(label="7 Days", value="7day", default=True),
@@ -42,9 +29,9 @@ GRID_SIZE_OPTIONS = [
 
 
 class CollageModal(discord.ui.Modal, title="Create Collage"):
-    username = ui.Label(
-        text="Last.fm Username",
-        component=ui.TextInput(placeholder="Enter your Last.fm username..."),
+    username = ui.TextInput(
+        label="Last.fm Username",
+        placeholder="Enter your Last.fm username...",
     )
     period = ui.Label(
         text="Time Period",
@@ -59,13 +46,10 @@ class CollageModal(discord.ui.Modal, title="Create Collage"):
         super().__init__()
         self.session = session
         if default_username:
-            self.username.component = ui.TextInput(
-                placeholder="Enter your Last.fm username...",
-                default=default_username,
-            )
+            self.username.default = default_username
 
     async def on_submit(self, interaction: discord.Interaction):
-        username_val = self.username.component.value
+        username_val = self.username.value
         period_val = self.period.component.values[0]
         grid_size_val = int(self.grid_size.component.values[0])
 
@@ -96,36 +80,12 @@ class CollageModal(discord.ui.Modal, title="Create Collage"):
                 )
                 return
 
-            if has_tracks:
-                top_5_tracks = "\n".join(
-                    f"{i + 1}. [{track.artist} - {track.name}]"
-                    f"(https://www.youtube.com/results?search_query={quote_plus(f'{track.artist} {track.name}')})"
-                    f" ({track.playcount} plays)"
-                    for i, track in enumerate(top_tracks.tracks[:5])
-                )
-                description = f"**Top 5 Tracks:**\n{top_5_tracks}"
-            else:
-                description = "*No tracks found for this period.*"
-
-            period_label = PERIOD_LABELS.get(period_val, period_val)
-            embed = discord.Embed(
-                title=f"{interaction.user.display_name}'s collage",
-                description=description,
-                color=EMBED_COLOR,
-                timestamp=datetime.datetime.now(datetime.timezone.utc),
+            embed = build_collage_embed(
+                interaction.user.display_name, top_tracks, period_val
             )
-            embed.set_footer(text=f"Period: {period_label}")
-
-            if has_albums:
-                buffer = await generate_collage(
-                    self.session, top_albums.albums, grid_size_val
-                )
-                embed.set_image(url="attachment://collage.jpg")
-                await interaction.channel.send(
-                    embed=embed, file=discord.File(buffer, filename="collage.jpg")
-                )
-            else:
-                await interaction.channel.send(embed=embed)
+            await send_collage(
+                interaction.channel, self.session, embed, top_albums, grid_size_val
+            )
             await save_lastfm_username(interaction.user.id, username_val)
             logger.info(f"Successfully created collage for {username_val}")
 

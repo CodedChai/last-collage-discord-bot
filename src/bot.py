@@ -9,7 +9,9 @@ from dotenv import load_dotenv
 import aiohttp
 
 from cogs.collage_cog import CollageCog
-from services.db_service import init_db
+from cogs.scheduled_collage_cog import ScheduledCollageCog
+from cogs.view_collage_cog import ViewCollageCog
+from services.db_service import init_db, get_scheduled_guild_ids
 
 load_dotenv()
 
@@ -33,8 +35,14 @@ class Bot(commands.Bot):
             timeout=aiohttp.ClientTimeout(total=30, connect=10),
         )
         await self.add_cog(CollageCog(self))
+        await self.add_cog(ScheduledCollageCog(self))
+        await self.add_cog(ViewCollageCog(self))
         synced = await self.tree.sync()
-        logger.info(f"Synced {len(synced)} command(s)")
+        logger.info(f"Synced {len(synced)} global command(s)")
+        guild_ids = await get_scheduled_guild_ids()
+        for guild_id in guild_ids:
+            guild_synced = await self.tree.sync(guild=discord.Object(id=guild_id))
+            logger.info(f"Synced {len(guild_synced)} command(s) to guild {guild_id}")
 
     async def on_ready(self):
         logger.info(f"Bot ready: logged in as {self.user}")
