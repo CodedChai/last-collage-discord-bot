@@ -213,7 +213,9 @@ class TestFormatSummaryText:
         summary = compute_group_summary([a, b])
         text = format_summary_text(summary)
         assert "Radiohead" in text
-        assert "group favorite" in text
+        assert "Group Favorite" in text
+        # Check that usernames are shown
+        assert "(A, B)" in text
 
     def test_popular_tracks_include_youtube_links(self):
         """Popular tracks should have YouTube links in the format"""
