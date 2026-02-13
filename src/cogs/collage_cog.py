@@ -108,7 +108,10 @@ class CollageModal(discord.ui.Modal, title="Create Collage"):
                 interaction.channel, self.session, embed, top_albums, grid_size_val
             )
             await save_user_preference(
-                UserPreference(discord_user_id=interaction.user.id, lastfm_username=request.username)
+                UserPreference(
+                    discord_user_id=interaction.user.id,
+                    lastfm_username=request.username,
+                )
             )
             logger.info(f"Successfully created collage for {request.username}")
 
@@ -142,7 +145,10 @@ class CollageCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @app_commands.command(name="collage")
+    @app_commands.command(
+        name="collage",
+        description="Create a collage of your top albums and tracks from Last.fm",
+    )
     async def create_collage(self, interaction: discord.Interaction):
         cached_username = await get_lastfm_username(interaction.user.id)
         await interaction.response.send_modal(

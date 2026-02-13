@@ -11,7 +11,11 @@ class ViewCollageCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @app_commands.command(name="view-weekly-collage")
+    @app_commands.command(
+        name="view-weekly-collage-participants",
+        description="View scheduled usernames for weekly collages in this channel",
+    )
+    @app_commands.guild_only()
     async def view_weekly_collage(self, interaction):
         schedules = await get_weekly_schedules_for_channel(
             interaction.guild_id, interaction.channel_id

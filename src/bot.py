@@ -10,6 +10,7 @@ import aiohttp
 
 from cogs.collage_cog import CollageCog
 from cogs.scheduled_collage_cog import ScheduledCollageCog
+from cogs.unsubscribe_cog import UnsubscribeCog
 from cogs.view_collage_cog import ViewCollageCog
 from services.db_service import init_db, get_scheduled_guild_ids
 
@@ -36,6 +37,7 @@ class Bot(commands.Bot):
         )
         await self.add_cog(CollageCog(self))
         await self.add_cog(ScheduledCollageCog(self))
+        await self.add_cog(UnsubscribeCog(self))
         await self.add_cog(ViewCollageCog(self))
         synced = await self.tree.sync()
         logger.info(f"Synced {len(synced)} global command(s)")

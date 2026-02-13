@@ -65,15 +65,15 @@ async def fetch_top_tracks(session: aiohttp.ClientSession, username: str, period
                 return top_tracks
             else:
                 logger.error(f"Failed to fetch top tracks for {username}: HTTP {response.status}")
-                return []
+                return None
     except LastFmError:
         raise
     except aiohttp.ClientError as e:
         logger.error(f"Network error fetching top tracks for {username}: {e}")
-        return []
+        return None
     except Exception as e:
         logger.error(f"Unexpected error fetching top tracks for {username}: {e}", exc_info=True)
-        return []
+        return None
 
 
 @retry(
@@ -100,12 +100,12 @@ async def fetch_top_albums(session: aiohttp.ClientSession, username: str, period
                 return top_albums
             else:
                 logger.error(f"Failed to fetch top albums for {username}: HTTP {response.status}")
-                return []
+                return None
     except LastFmError:
         raise
     except aiohttp.ClientError as e:
         logger.error(f"Network error fetching top albums for {username}: {e}")
-        return []
+        return None
     except Exception as e:
         logger.error(f"Unexpected error fetching top albums for {username}: {e}", exc_info=True)
-        return []
+        return None

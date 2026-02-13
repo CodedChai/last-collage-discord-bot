@@ -205,6 +205,8 @@ def _create_placeholder() -> Image.Image:
 
 
 def determine_dynamic_grid_size(albums: list[AlbumModel]) -> tuple[int, int]:
+    if not albums:
+        return (1, 1)
     best = DYNAMIC_GRID_SIZES[0]
     for i, (cols, rows) in enumerate(DYNAMIC_GRID_SIZES):
         count = cols * rows

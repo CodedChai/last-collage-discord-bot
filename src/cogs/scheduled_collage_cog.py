@@ -8,7 +8,7 @@ import discord
 from discord import app_commands, ui
 from discord.ext import commands, tasks
 from pydantic import ValidationError
-from models import WeeklyJoinRequest, UserPreference
+from models import WeeklyJoinRequest, WeeklySchedule, UserPreference
 from services.lastfm_service import fetch_top_tracks, fetch_top_albums
 from services.collage_service import determine_dynamic_grid_size
 from services.db_service import (
@@ -53,9 +53,18 @@ class ScheduleWeeklyModal(discord.ui.Modal, title="Join Weekly Collage"):
             await interaction.response.send_message(error_msg, ephemeral=True)
             return
 
-        await save_weekly_schedule(request)
+        await save_weekly_schedule(
+            WeeklySchedule(
+                lastfm_username=request.username,
+                guild_id=request.guild_id,
+                channel_id=request.channel_id,
+                discord_user_id=request.discord_user_id,
+            )
+        )
         await save_user_preference(
-            UserPreference(discord_user_id=interaction.user.id, lastfm_username=request.username)
+            UserPreference(
+                discord_user_id=interaction.user.id, lastfm_username=request.username
+            )
         )
         count = await get_weekly_subscriber_count(self.guild_id, self.channel_id)
         await interaction.response.send_message(
@@ -85,7 +94,11 @@ class ScheduledCollageCog(commands.Cog):
     async def cog_unload(self):
         self.post_weekly_collages.cancel()
 
-    @app_commands.command(name="join-weekly-collage")
+    @app_commands.command(
+        name="join-weekly-collage",
+        description="Join the weekly collage schedule for this channel",
+    )
+    @app_commands.guild_only()
     async def schedule_weekly_collage(self, interaction: discord.Interaction):
         cached_username = await get_lastfm_username(interaction.user.id)
         await interaction.response.send_modal(
@@ -116,11 +129,17 @@ class ScheduledCollageCog(commands.Cog):
                     member = await guild.fetch_member(schedule.discord_user_id)
                 except Exception:
                     pass
-                display_name = member.display_name if member else schedule.lastfm_username
+                display_name = (
+                    member.display_name if member else schedule.lastfm_username
+                )
 
                 top_tracks, top_albums = await asyncio.gather(
-                    fetch_top_tracks(self.bot.session, schedule.lastfm_username, "7day"),
-                    fetch_top_albums(self.bot.session, schedule.lastfm_username, "7day"),
+                    fetch_top_tracks(
+                        self.bot.session, schedule.lastfm_username, "7day"
+                    ),
+                    fetch_top_albums(
+                        self.bot.session, schedule.lastfm_username, "7day"
+                    ),
                 )
 
                 grid_size = (

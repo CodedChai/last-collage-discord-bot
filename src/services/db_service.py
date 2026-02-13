@@ -110,6 +110,16 @@ async def get_weekly_subscriber_count(guild_id: int, channel_id: int) -> int:
         return row[0] if row else 0
 
 
+async def delete_weekly_schedule(discord_user_id: int, guild_id: int) -> bool:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            "DELETE FROM weekly_schedules WHERE discord_user_id = ? AND guild_id = ?",
+            (discord_user_id, guild_id),
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
 async def get_all_weekly_schedules() -> list[WeeklySchedule]:
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute(
