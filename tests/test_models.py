@@ -12,6 +12,8 @@ from models import (
     TopTracksModel,
     AlbumModel,
     TopAlbumsModel,
+    ArtistModel,
+    TopArtistsModel,
     CollageRequest,
     WeeklyJoinRequest,
 )
@@ -225,6 +227,58 @@ class TestTopAlbumsModel:
         data = {"topalbums": {"album": []}}
         result = TopAlbumsModel.model_validate(data)
         assert result.albums == []
+
+
+# --- ArtistModel ---
+
+
+class TestArtistModel:
+    def test_parses_nested_json(self):
+        data = {
+            "name": "Artist Name",
+            "@attr": {"rank": 1},
+            "playcount": 200,
+        }
+        artist = ArtistModel.model_validate(data)
+        assert artist.name == "Artist Name"
+        assert artist.rank == 1
+        assert artist.playcount == 200
+
+    def test_playcount_as_string_int(self):
+        data = {
+            "name": "Artist",
+            "@attr": {"rank": "3"},
+            "playcount": "10",
+        }
+        artist = ArtistModel.model_validate(data)
+        assert artist.playcount == 10
+        assert artist.rank == 3
+
+
+# --- TopArtistsModel ---
+
+
+class TestTopArtistsModel:
+    def test_parses_from_alias_path(self):
+        data = {
+            "topartists": {
+                "artist": [
+                    {
+                        "name": "Artist",
+                        "@attr": {"rank": 1},
+                        "playcount": 50,
+                    }
+                ]
+            }
+        }
+        result = TopArtistsModel.model_validate(data)
+        assert len(result.artists) == 1
+        assert result.artists[0].name == "Artist"
+
+    def test_empty_artist_list(self):
+        data = {"topartists": {"artist": []}}
+        result = TopArtistsModel.model_validate(data)
+        assert result.artists == []
 
 
 # --- CollageRequest ---

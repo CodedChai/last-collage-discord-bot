@@ -1,6 +1,8 @@
+import asyncio
 import datetime
 import logging
 import traceback
+from collections import defaultdict
 from zoneinfo import ZoneInfo
 
 import discord
@@ -15,7 +17,18 @@ from services.db_service import (
     save_user_preference,
     get_weekly_subscriber_count,
 )
-from cogs.messaging import fetch_and_send_collage
+from services.lastfm_service import (
+    fetch_top_artists,
+    fetch_top_albums,
+    fetch_top_tracks,
+)
+from services.summary_service import (
+    extract_listening_data,
+    compute_group_summary,
+    format_summary_text,
+)
+from cogs.messaging import send_collage_from_data
+from utils.embed_utils import EMBED_COLOR
 
 logger = logging.getLogger("lastfm_collage_bot.scheduled_collage_cog")
 
@@ -111,9 +124,34 @@ class ScheduledCollageCog(commands.Cog):
 
     async def _post_weekly_collages(self):
         schedules = await get_all_weekly_schedules()
+
+        channels: dict[tuple[int, int], list[WeeklySchedule]] = defaultdict(list)
+        for schedule in schedules:
+            channels[(schedule.guild_id, schedule.channel_id)].append(schedule)
+
+        for (guild_id, channel_id), channel_schedules in channels.items():
+            await self._post_channel_collages(guild_id, channel_id, channel_schedules)
+
+    async def _post_channel_collages(
+        self, guild_id: int, channel_id: int, schedules: list[WeeklySchedule]
+    ):
+        guild = self.bot.get_guild(guild_id)
+        if guild is None:
+            return
+
+        channel = guild.get_channel(channel_id)
+        if channel is None:
+            return
+
+        user_data_list = []
+
         for schedule in schedules:
             try:
-                await self._post_single_collage(schedule)
+                _, listening_data = await self._post_single_collage(
+                    guild, channel, schedule
+                )
+                if listening_data is not None:
+                    user_data_list.append(listening_data)
             except Exception:
                 logger.error(
                     f"Error posting weekly collage for {schedule.lastfm_username}",
@@ -121,15 +159,19 @@ class ScheduledCollageCog(commands.Cog):
                 )
                 continue
 
-    async def _post_single_collage(self, schedule):
-        guild = self.bot.get_guild(schedule.guild_id)
-        if guild is None:
-            return
+        if len(user_data_list) >= 2:
+            summary = compute_group_summary(user_data_list)
+            text = format_summary_text(summary)
+            embed = discord.Embed(
+                title="Weekly Group Summary",
+                description=text,
+                color=EMBED_COLOR,
+                timestamp=datetime.datetime.now(datetime.timezone.utc),
+            )
+            embed.set_footer(text=f"{summary.user_count} participants this week")
+            await channel.send(embed=embed)
 
-        channel = guild.get_channel(schedule.channel_id)
-        if channel is None:
-            return
-
+    async def _post_single_collage(self, guild, channel, schedule):
         member = None
         try:
             member = await guild.fetch_member(schedule.discord_user_id)
@@ -137,14 +179,29 @@ class ScheduledCollageCog(commands.Cog):
             pass
         display_name = member.display_name if member else schedule.lastfm_username
 
+        top_artists, top_albums, top_tracks = await asyncio.gather(
+            fetch_top_artists(self.bot.session, schedule.lastfm_username, "7day"),
+            fetch_top_albums(self.bot.session, schedule.lastfm_username, "7day"),
+            fetch_top_tracks(self.bot.session, schedule.lastfm_username, "7day"),
+        )
+
         title = f"{display_name}'s Weekly Collage"
-        await fetch_and_send_collage(
-            channel, self.bot.session, schedule.lastfm_username, "7day", title
+        has_albums = top_albums and top_albums.albums
+        has_tracks = top_tracks and top_tracks.tracks
+
+        if has_albums or has_tracks:
+            await send_collage_from_data(
+                channel, self.bot.session, title, top_tracks, top_albums
+            )
+
+        listening_data = extract_listening_data(
+            display_name, top_artists, top_albums, top_tracks
         )
 
         logger.info(
-            f"Posted weekly collage for {schedule.lastfm_username} in guild {schedule.guild_id}"
+            f"Posted weekly collage for {schedule.lastfm_username} in guild {guild.id}"
         )
+        return display_name, listening_data
 
     @post_weekly_collages.before_loop
     async def before_post_weekly_collages(self):
