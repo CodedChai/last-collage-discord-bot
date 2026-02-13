@@ -26,7 +26,7 @@ def format_top_tracks(tracks, limit=5):
     )
 
 
-def build_collage_embed(display_name, top_tracks, period_val):
+def build_collage_embed(title, top_tracks, period_val):
     has_tracks = top_tracks and top_tracks.tracks
     if has_tracks:
         description = f"**Top 5 Tracks:**\n{format_top_tracks(top_tracks.tracks)}"
@@ -35,7 +35,7 @@ def build_collage_embed(display_name, top_tracks, period_val):
 
     period_label = PERIOD_LABELS.get(period_val, period_val)
     embed = discord.Embed(
-        title=f"{display_name}'s collage",
+        title=title,
         description=description,
         color=EMBED_COLOR,
         timestamp=datetime.datetime.now(datetime.timezone.utc),

@@ -84,13 +84,16 @@ class CollageModal(discord.ui.Modal, title="Create Collage"):
                 return
 
             if is_dynamic:
-                grid_size_val = determine_dynamic_grid_size(top_albums.albums) if has_albums else (1, 1)
+                grid_size_val = (
+                    determine_dynamic_grid_size(top_albums.albums)
+                    if has_albums
+                    else (1, 1)
+                )
             else:
                 grid_size_val = int(grid_size_raw)
 
-            embed = build_collage_embed(
-                interaction.user.display_name, top_tracks, period_val
-            )
+            title = f"{interaction.user.display_name}'s Top {PERIOD_LABELS.get(period_val, period_val)} Collage"
+            embed = build_collage_embed(title, top_tracks, period_val)
             await send_collage(
                 interaction.channel, self.session, embed, top_albums, grid_size_val
             )

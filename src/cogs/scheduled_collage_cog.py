@@ -121,7 +121,8 @@ class ScheduledCollageCog(commands.Cog):
                     else (1, 1)
                 )
 
-                embed = build_collage_embed(display_name, top_tracks, "7day")
+                title = f"{display_name}'s Weekly Collage"
+                embed = build_collage_embed(title, top_tracks, "7day")
                 await send_collage(
                     channel, self.bot.session, embed, top_albums, grid_size
                 )
