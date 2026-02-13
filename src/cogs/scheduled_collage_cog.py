@@ -29,7 +29,9 @@ class ScheduleWeeklyModal(discord.ui.Modal, title="Schedule Weekly Collage"):
         placeholder="Enter your Last.fm username...",
     )
 
-    def __init__(self, interaction: discord.Interaction, default_username: str | None = None):
+    def __init__(
+        self, interaction: discord.Interaction, default_username: str | None = None
+    ):
         super().__init__()
         self.guild_id = interaction.guild_id
         self.channel_id = interaction.channel_id
@@ -48,10 +50,12 @@ class ScheduleWeeklyModal(discord.ui.Modal, title="Schedule Weekly Collage"):
             ephemeral=True,
         )
         await interaction.channel.send(
-            f"🎶 **{interaction.user.display_name}** has joined the weekly jam! Now there are **{count}** participants."
+            f"🎶 **{interaction.user.display_name}** has joined the weekly jam! Now there are **{count}** participants. Want to join the fun? Use `/schedule-weekly-collage` to get your own weekly collage!"
         )
 
-    async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
+    async def on_error(
+        self, interaction: discord.Interaction, error: Exception
+    ) -> None:
         await interaction.response.send_message(
             "Oops! Something went wrong.", ephemeral=True
         )
@@ -111,10 +115,16 @@ class ScheduledCollageCog(commands.Cog):
                     fetch_top_albums(self.bot.session, lastfm_username, "7day"),
                 )
 
-                grid_size = determine_dynamic_grid_size(top_albums.albums) if top_albums and top_albums.albums else (1, 1)
+                grid_size = (
+                    determine_dynamic_grid_size(top_albums.albums)
+                    if top_albums and top_albums.albums
+                    else (1, 1)
+                )
 
                 embed = build_collage_embed(display_name, top_tracks, "7day")
-                await send_collage(channel, self.bot.session, embed, top_albums, grid_size)
+                await send_collage(
+                    channel, self.bot.session, embed, top_albums, grid_size
+                )
 
                 logger.info(
                     f"Posted weekly collage for {lastfm_username} in guild {guild_id}"
