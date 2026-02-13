@@ -9,8 +9,9 @@ from pydantic import ValidationError
 from models import CollageRequest, UserPreference
 from services.lastfm_service import fetch_top_tracks, fetch_top_albums, LastFmError
 from services.db_service import get_lastfm_username, save_user_preference
-from services.collage_service import determine_dynamic_grid_size
-from cogs.collage_utils import PERIOD_LABELS, build_collage_embed, send_collage
+from utils.collage_utils import resolve_grid_size
+from utils.embed_utils import PERIOD_LABELS, build_collage_embed
+from cogs.messaging import send_collage
 
 logger = logging.getLogger("lastfm_collage_bot.collage_cog")
 
@@ -64,11 +65,9 @@ class CollageModal(discord.ui.Modal, title="Create Collage"):
             await interaction.response.send_message(error_msg, ephemeral=True)
             return
 
-        is_dynamic = request.grid_size == "dynamic"
-
         logger.info(
             f"Collage creation requested for user: {request.username}, period: {request.period}, "
-            f"grid: {'dynamic' if is_dynamic else f'{request.grid_size}x{request.grid_size}'} by {interaction.user}"
+            f"grid: {request.grid_size} by {interaction.user}"
         )
 
         await interaction.response.send_message(
@@ -93,14 +92,9 @@ class CollageModal(discord.ui.Modal, title="Create Collage"):
                 )
                 return
 
-            if is_dynamic:
-                grid_size_val = (
-                    determine_dynamic_grid_size(top_albums.albums)
-                    if has_albums
-                    else (1, 1)
-                )
-            else:
-                grid_size_val = int(request.grid_size)
+            grid_size_val = resolve_grid_size(
+                request.grid_size, top_albums.albums if has_albums else None
+            )
 
             title = f"{interaction.user.display_name}'s Top {PERIOD_LABELS.get(request.period, request.period)} Collage"
             embed = build_collage_embed(title, top_tracks, request.period)

@@ -10,7 +10,8 @@ from discord.ext import commands, tasks
 from pydantic import ValidationError
 from models import WeeklyJoinRequest, WeeklySchedule, UserPreference
 from services.lastfm_service import fetch_top_tracks, fetch_top_albums
-from services.collage_service import determine_dynamic_grid_size
+from utils.collage_utils import resolve_grid_size
+from utils.embed_utils import build_collage_embed
 from services.db_service import (
     save_weekly_schedule,
     get_all_weekly_schedules,
@@ -18,7 +19,7 @@ from services.db_service import (
     save_user_preference,
     get_weekly_subscriber_count,
 )
-from cogs.collage_utils import build_collage_embed, send_collage
+from cogs.messaging import send_collage
 
 logger = logging.getLogger("lastfm_collage_bot.scheduled_collage_cog")
 
@@ -142,10 +143,9 @@ class ScheduledCollageCog(commands.Cog):
                     ),
                 )
 
-                grid_size = (
-                    determine_dynamic_grid_size(top_albums.albums)
-                    if top_albums and top_albums.albums
-                    else (1, 1)
+                grid_size = resolve_grid_size(
+                    "dynamic",
+                    top_albums.albums if top_albums and top_albums.albums else None,
                 )
 
                 title = f"{display_name}'s Weekly Collage"
