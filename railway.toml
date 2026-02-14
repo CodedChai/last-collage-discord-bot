@@ -1,9 +1,2 @@
 [build]
-builder = "nixpacks"
-
-[build.nixpacks]
-providers = ["python"]
-installCmd = "pip install -r src/requirements.txt"
-
-[deploy]
-startCommand = "cd src && python bot.py"
+builder = "RAILPACK"
