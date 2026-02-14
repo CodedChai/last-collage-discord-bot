@@ -2,7 +2,7 @@
 builder = "nixpacks"
 
 [build.nixpacks]
-aptPkgs = []
+providers = ["python"]
 installCmd = "pip install -r src/requirements.txt"
 
 [deploy]
