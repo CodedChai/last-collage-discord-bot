@@ -4,5 +4,5 @@ pillow==12.1.0
 pydantic==2.12.5
 python-dotenv==1.2.1
 tenacity==9.1.4
-diskcache==5.6.3
-aiosqlite==0.22.1
+asyncpg==0.31.0
+redis[hiredis]==7.0.1

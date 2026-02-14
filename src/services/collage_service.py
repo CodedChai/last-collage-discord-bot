@@ -1,11 +1,12 @@
 import asyncio
 import logging
 import os
+import pickle
 import re
 from io import BytesIO
 
 import aiohttp
-import diskcache
+import redis.asyncio as aioredis
 from dotenv import load_dotenv
 from PIL import Image
 from tenacity import (
@@ -22,9 +23,9 @@ load_dotenv()
 
 logger = logging.getLogger("lastfm_collage_bot.collage_service")
 
-CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "image_cache")
-CACHE_SIZE_LIMIT = int(os.getenv("IMAGE_CACHE_SIZE_MB", "500")) * 1024 * 1024
-image_cache = diskcache.Cache(CACHE_DIR, size_limit=CACHE_SIZE_LIMIT)
+_redis: aioredis.Redis | None = None
+
+IMAGE_CACHE_TTL = 86400
 
 MAX_CONCURRENT_DOWNLOADS = 10
 IMAGE_DOWNLOAD_HEADERS = {
@@ -32,6 +33,23 @@ IMAGE_DOWNLOAD_HEADERS = {
 }
 FALLBACK_SIZES = ["500x500", "1000x1000", "174s"]
 SIZE_PATTERN = re.compile(r"(/i/u/)[^/]+(/)")
+
+
+async def init_cache() -> None:
+    global _redis
+    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+    _redis = aioredis.from_url(redis_url)
+
+
+async def close_cache() -> None:
+    global _redis
+    if _redis is not None:
+        await _redis.close()
+        _redis = None
+
+
+def _get_redis() -> aioredis.Redis | None:
+    return _redis
 
 
 @retry(
@@ -57,11 +75,14 @@ async def _download_image(
     session: aiohttp.ClientSession, url: str
 ) -> Image.Image | None:
     try:
-        cached = image_cache.get(url)
-        if cached is not None:
-            logger.info(f"Cache hit for {url}")
-            raw_bytes, size, mode = cached
-            return Image.frombytes(mode, size, raw_bytes)
+        redis = _get_redis()
+
+        if redis is not None:
+            cached = await redis.get(url)
+            if cached is not None:
+                logger.info(f"Cache hit for {url}")
+                raw_bytes, size, mode = pickle.loads(cached)
+                return Image.frombytes(mode, size, raw_bytes)
 
         urls_to_try = [url] + [
             SIZE_PATTERN.sub(rf"\g<1>{size}\2", url) for size in FALLBACK_SIZES
@@ -79,7 +100,12 @@ async def _download_image(
                 if img.size != (TILE_SIZE, TILE_SIZE):
                     img = img.resize((TILE_SIZE, TILE_SIZE), Image.Resampling.LANCZOS)
 
-                image_cache.set(url, (img.tobytes(), img.size, img.mode))
+                if redis is not None:
+                    await redis.set(
+                        url,
+                        pickle.dumps((img.tobytes(), img.size, img.mode)),
+                        ex=IMAGE_CACHE_TTL,
+                    )
 
                 return img
 

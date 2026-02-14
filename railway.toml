@@ -1,0 +1,4 @@
+[build]
+
+[deploy]
+startCommand = "cd src && python bot.py"
