@@ -1,4 +1,9 @@
 [build]
+builder = "nixpacks"
+
+[build.nixpacks]
+aptPkgs = []
+installCmd = "pip install -r src/requirements.txt"
 
 [deploy]
 startCommand = "cd src && python bot.py"
