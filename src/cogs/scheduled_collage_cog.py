@@ -76,7 +76,7 @@ class ScheduleWeeklyModal(discord.ui.Modal, title="Join Weekly Collage"):
         )
         count = await get_weekly_subscriber_count(self.guild_id, self.channel_id)
         await interaction.response.send_message(
-            f"✅ Welcome! Every Monday at 9 AM CT, a 7-day collage for **{request.username}** will be posted in this channel.",
+            f"✅ Welcome! Every Sunday at 9 AM CT, a 7-day collage for **{request.username}** will be posted in this channel.",
             ephemeral=True,
         )
         await interaction.channel.send(
@@ -116,7 +116,7 @@ class ScheduledCollageCog(commands.Cog):
     @tasks.loop(time=datetime.time(hour=9, minute=0, tzinfo=CT))
     async def post_weekly_collages(self):
         now = datetime.datetime.now(CT)
-        if now.weekday() != 0:
+        if now.weekday() != 6:
             return
         await self._post_weekly_collages()
 
