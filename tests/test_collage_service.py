@@ -44,7 +44,7 @@ def make_jpeg_bytes(width=300, height=300, color=(255, 0, 0)):
 def disable_image_cache(monkeypatch):
     import services.collage_service as cs
 
-    monkeypatch.setattr(cs, "_redis", None)
+    monkeypatch.setattr(cs, "_cache", None)
 
 
 # --- generate_collage ---

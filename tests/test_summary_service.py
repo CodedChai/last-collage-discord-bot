@@ -18,8 +18,8 @@ from services.summary_service import (
     extract_listening_data,
     compute_pair_overlap,
     compute_group_summary,
-    format_summary_text,
 )
+from formatters.summary_formatter import format_summary_text
 
 
 def _make_user(name, artists=None, albums=None, tracks=None):

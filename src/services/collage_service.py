@@ -1,4 +1,5 @@
 import asyncio
+import enum
 import hashlib
 import logging
 import os
@@ -23,12 +24,6 @@ load_dotenv()
 
 logger = logging.getLogger("lastfm_collage_bot.collage_service")
 
-_redis: aioredis.Redis | None = None
-
-IMAGE_CACHE_TTL = 29 * 86400
-NEGATIVE_CACHE_TTL = 6 * 3600
-NEGATIVE_SENTINEL = b"MISS"
-
 MAX_CONCURRENT_DOWNLOADS = 10
 IMAGE_DOWNLOAD_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"
@@ -37,32 +32,82 @@ FALLBACK_SIZES = ["500x500", "1000x1000", "174s"]
 SIZE_PATTERN = re.compile(r"(/i/u/)[^/]+(/)")
 
 
-def _cache_key(url: str) -> str:
-    h = hashlib.sha1(url.encode("utf-8")).hexdigest()
-    return f"img:v1:{h}"
+class _MISS(enum.Enum):
+    MISS = "MISS"
+
+
+class ImageCache:
+    IMAGE_CACHE_TTL = 29 * 86400
+    NEGATIVE_CACHE_TTL = 6 * 3600
+    _NEGATIVE_SENTINEL = b"MISS"
+
+    def __init__(self, redis: aioredis.Redis) -> None:
+        self._redis = redis
+
+    @staticmethod
+    def _cache_key(url: str) -> str:
+        h = hashlib.sha1(url.encode("utf-8")).hexdigest()
+        return f"img:v1:{h}"
+
+    async def get_many(self, urls: list[str]) -> list[Image.Image | None | _MISS]:
+        keys = [self._cache_key(u) for u in urls]
+        try:
+            cached_values = await self._redis.mget(keys)
+        except Exception:
+            logger.warning("Redis MGET failed, treating all as cache misses")
+            return [_MISS.MISS] * len(urls)
+
+        results: list[Image.Image | None | _MISS] = []
+        for cached in cached_values:
+            if cached is None:
+                results.append(_MISS.MISS)
+            elif cached == self._NEGATIVE_SENTINEL:
+                results.append(None)
+            else:
+                results.append(Image.frombytes("RGB", (TILE_SIZE, TILE_SIZE), cached))
+        return results
+
+    async def put(self, url: str, img: Image.Image | None) -> None:
+        key = self._cache_key(url)
+        try:
+            if img is not None:
+                await self._redis.set(key, img.tobytes(), ex=self.IMAGE_CACHE_TTL)
+            else:
+                await self._redis.set(
+                    key, self._NEGATIVE_SENTINEL, ex=self.NEGATIVE_CACHE_TTL
+                )
+        except Exception:
+            logger.warning(f"Redis SET failed for {key}")
+
+    async def close(self) -> None:
+        await self._redis.close()
+
+
+_cache: ImageCache | None = None
 
 
 async def init_cache() -> None:
-    global _redis
+    global _cache
     redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
-    _redis = aioredis.from_url(
+    redis = aioredis.from_url(
         redis_url,
         max_connections=20,
         socket_connect_timeout=2,
         socket_timeout=2,
         health_check_interval=30,
     )
+    _cache = ImageCache(redis)
 
 
 async def close_cache() -> None:
-    global _redis
-    if _redis is not None:
-        await _redis.close()
-        _redis = None
+    global _cache
+    if _cache is not None:
+        await _cache.close()
+        _cache = None
 
 
-def _get_redis() -> aioredis.Redis | None:
-    return _redis
+def get_cache() -> ImageCache | None:
+    return _cache
 
 
 @retry(
@@ -119,41 +164,30 @@ async def _download_image(
 async def download_album_images(
     session: aiohttp.ClientSession, albums: list[AlbumModel]
 ) -> list[Image.Image | None]:
-    redis = _get_redis()
+    cache = get_cache()
     albums_with_urls = [(i, a) for i, a in enumerate(albums) if a.image_url]
     urls = [a.image_url for _, a in albums_with_urls]
-    keys = [_cache_key(u) for u in urls]
 
     images: list[Image.Image | None] = [None] * len(albums)
-    misses: list[tuple[int, int, str, str]] = []
+    to_download: list[tuple[int, str]] = []
 
-    if redis is not None:
-        try:
-            cached_values = await redis.mget(keys)
-        except Exception:
-            logger.warning("Redis MGET failed, treating all as cache misses")
-            cached_values = [None] * len(keys)
-
+    if cache is not None:
+        cached_results = await cache.get_many(urls)
         cache_hits = 0
-        for idx, ((i, _album), cached) in enumerate(
-            zip(albums_with_urls, cached_values)
-        ):
-            if cached is not None:
-                if cached == NEGATIVE_SENTINEL:
-                    continue
-                cache_hits += 1
-                images[i] = Image.frombytes(
-                    "RGB", (TILE_SIZE, TILE_SIZE), cached
-                )
+        for (i, _album), url, cached in zip(albums_with_urls, urls, cached_results):
+            if cached is _MISS.MISS:
+                to_download.append((i, url))
+            elif cached is None:
+                pass  # negative-cached, leave as None
             else:
-                misses.append((i, idx, urls[idx], keys[idx]))
-
+                cache_hits += 1
+                images[i] = cached
         if cache_hits:
-            logger.debug(f"Cache hits: {cache_hits}/{len(keys)}")
+            logger.debug(f"Cache hits: {cache_hits}/{len(urls)}")
     else:
-        misses = [(i, idx, urls[idx], keys[idx]) for idx, (i, _) in enumerate(albums_with_urls)]
+        to_download = [(i, url) for (i, _), url in zip(albums_with_urls, urls)]
 
-    if misses:
+    if to_download:
         semaphore = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS)
 
         async def _limited_download(url: str) -> Image.Image | None:
@@ -161,21 +195,13 @@ async def download_album_images(
                 return await _download_image(session, url)
 
         downloaded = await asyncio.gather(
-            *(_limited_download(url) for _, _, url, _ in misses)
+            *(_limited_download(url) for _, url in to_download)
         )
 
-        for (i, _idx, _url, key), img in zip(misses, downloaded):
+        for (i, url), img in zip(to_download, downloaded):
             images[i] = img
-            if redis is not None:
-                try:
-                    if img is not None:
-                        await redis.set(key, img.tobytes(), ex=IMAGE_CACHE_TTL)
-                    else:
-                        await redis.set(
-                            key, NEGATIVE_SENTINEL, ex=NEGATIVE_CACHE_TTL
-                        )
-                except Exception:
-                    logger.warning(f"Redis SET failed for {key}")
+            if cache is not None:
+                await cache.put(url, img)
 
     successful_downloads = sum(1 for img in images if img is not None)
     logger.info(

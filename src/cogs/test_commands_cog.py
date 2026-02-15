@@ -10,8 +10,8 @@ from services.db_service import get_all_weekly_schedules
 from services.summary_service import (
     UserListeningData,
     compute_group_summary,
-    format_summary_text,
 )
+from formatters.summary_formatter import format_summary_text
 from services.weekly_collage_service import (
     fetch_user_listening_data,
     fetch_member_safe,

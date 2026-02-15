@@ -17,10 +17,8 @@ from services.db_service import (
     save_user_preference,
     get_weekly_subscriber_count,
 )
-from services.summary_service import (
-    compute_group_summary,
-    format_summary_text,
-)
+from services.summary_service import compute_group_summary
+from formatters.summary_formatter import format_summary_text
 from services.weekly_collage_service import (
     fetch_user_listening_data,
     fetch_member_safe,

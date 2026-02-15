@@ -23,7 +23,9 @@ from services.db_service import (
 @pytest.fixture
 def mock_pool(monkeypatch):
     pool = AsyncMock()
-    monkeypatch.setattr(db_service, "_pool", pool)
+    svc = db_service.DatabaseService()
+    svc.pool = pool
+    monkeypatch.setattr(db_service, "_db", svc)
     return pool
 
 
