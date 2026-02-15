@@ -1,12 +1,14 @@
 import datetime
 import logging
 import traceback
+from collections import defaultdict
 from zoneinfo import ZoneInfo
 
 import discord
 from discord import app_commands, ui
 from discord.ext import commands, tasks
 from pydantic import ValidationError
+
 from models import WeeklyJoinRequest, WeeklySchedule, UserPreference
 from services.db_service import (
     save_weekly_schedule,
@@ -15,7 +17,14 @@ from services.db_service import (
     save_user_preference,
     get_weekly_subscriber_count,
 )
-from cogs.messaging import fetch_and_send_collage
+from services.summary_service import compute_group_summary
+from formatters.summary_formatter import format_summary_text
+from services.weekly_collage_service import (
+    fetch_user_listening_data,
+    fetch_member_safe,
+    get_display_name,
+)
+from cogs.messaging import send_collage_from_data
 
 logger = logging.getLogger("lastfm_collage_bot.scheduled_collage_cog")
 
@@ -65,7 +74,7 @@ class ScheduleWeeklyModal(discord.ui.Modal, title="Join Weekly Collage"):
         )
         count = await get_weekly_subscriber_count(self.guild_id, self.channel_id)
         await interaction.response.send_message(
-            f"✅ Welcome! Every Monday at 9 AM CT, a 7-day collage for **{request.username}** will be posted in this channel.",
+            f"✅ Welcome! Every Sunday at 9 AM CT, a 7-day collage for **{request.username}** will be posted in this channel.",
             ephemeral=True,
         )
         await interaction.channel.send(
@@ -105,15 +114,40 @@ class ScheduledCollageCog(commands.Cog):
     @tasks.loop(time=datetime.time(hour=9, minute=0, tzinfo=CT))
     async def post_weekly_collages(self):
         now = datetime.datetime.now(CT)
-        if now.weekday() != 0:
+        if now.weekday() != 6:
             return
         await self._post_weekly_collages()
 
     async def _post_weekly_collages(self):
         schedules = await get_all_weekly_schedules()
+
+        channels: dict[tuple[int, int], list[WeeklySchedule]] = defaultdict(list)
+        for schedule in schedules:
+            channels[(schedule.guild_id, schedule.channel_id)].append(schedule)
+
+        for (guild_id, channel_id), channel_schedules in channels.items():
+            await self._post_channel_collages(guild_id, channel_id, channel_schedules)
+
+    async def _post_channel_collages(
+        self, guild_id: int, channel_id: int, schedules: list[WeeklySchedule]
+    ):
+        guild = self.bot.get_guild(guild_id)
+        if guild is None:
+            return
+
+        channel = guild.get_channel(channel_id)
+        if channel is None:
+            return
+
+        user_data_list = []
+
         for schedule in schedules:
             try:
-                await self._post_single_collage(schedule)
+                _, listening_data = await self._post_single_collage(
+                    guild, channel, schedule
+                )
+                if listening_data is not None:
+                    user_data_list.append(listening_data)
             except Exception:
                 logger.error(
                     f"Error posting weekly collage for {schedule.lastfm_username}",
@@ -121,30 +155,42 @@ class ScheduledCollageCog(commands.Cog):
                 )
                 continue
 
-    async def _post_single_collage(self, schedule):
-        guild = self.bot.get_guild(schedule.guild_id)
-        if guild is None:
-            return
+        if len(user_data_list) >= 2:
+            summary = compute_group_summary(user_data_list)
+            text = format_summary_text(summary)
+            await channel.send(text)
 
-        channel = guild.get_channel(schedule.channel_id)
-        if channel is None:
-            return
+    async def _post_single_collage(self, guild, channel, schedule):
+        member = await fetch_member_safe(guild, schedule.discord_user_id)
+        display_name = get_display_name(member, schedule.lastfm_username)
 
-        member = None
-        try:
-            member = await guild.fetch_member(schedule.discord_user_id)
-        except Exception:
-            pass
-        display_name = member.display_name if member else schedule.lastfm_username
+        listening_data = await fetch_user_listening_data(
+            self.bot.session, schedule.lastfm_username, display_name
+        )
 
         title = f"{display_name}'s Weekly Collage"
-        await fetch_and_send_collage(
-            channel, self.bot.session, schedule.lastfm_username, "7day", title
+        has_data = (listening_data.albums and len(listening_data.albums) > 0) or (
+            listening_data.tracks and len(listening_data.tracks) > 0
         )
 
+        if has_data:
+            from services.lastfm_service import fetch_top_albums, fetch_top_tracks
+
+            top_tracks = await fetch_top_tracks(
+                self.bot.session, schedule.lastfm_username, "7day"
+            )
+            top_albums = await fetch_top_albums(
+                self.bot.session, schedule.lastfm_username, "7day"
+            )
+
+            await send_collage_from_data(
+                channel, self.bot.session, title, top_tracks, top_albums
+            )
+
         logger.info(
-            f"Posted weekly collage for {schedule.lastfm_username} in guild {schedule.guild_id}"
+            f"Posted weekly collage for {schedule.lastfm_username} in guild {guild.id}"
         )
+        return display_name, listening_data
 
     @post_weekly_collages.before_loop
     async def before_post_weekly_collages(self):

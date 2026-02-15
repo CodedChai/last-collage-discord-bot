@@ -50,3 +50,22 @@ async def send_collage(destination, session, embed, top_albums, grid_size):
         )
     else:
         await destination.send(embed=embed)
+
+
+async def send_collage_from_data(
+    destination,
+    session,
+    title: str,
+    top_tracks,
+    top_albums,
+    grid_size_str: str = "dynamic",
+):
+    """Send a collage from already-fetched data. Used by weekly scheduler to avoid double-fetching."""
+    has_albums = top_albums and top_albums.albums
+
+    grid_size = resolve_grid_size(
+        grid_size_str, top_albums.albums if has_albums else None
+    )
+
+    embed = build_collage_embed(title, top_tracks, "7day")
+    await send_collage(destination, session, embed, top_albums, grid_size)

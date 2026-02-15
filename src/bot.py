@@ -10,16 +10,18 @@ import aiohttp
 
 from cogs.collage_cog import CollageCog
 from cogs.scheduled_collage_cog import ScheduledCollageCog
+from cogs.test_commands_cog import TestCommandsCog
 from cogs.unsubscribe_cog import UnsubscribeCog
 from cogs.view_collage_cog import ViewCollageCog
-from services.db_service import init_db, get_scheduled_guild_ids
+from services.db_service import init_db, close_db, get_scheduled_guild_ids
+from services.collage_service import init_cache, close_cache
 
 load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler("bot.log"), logging.StreamHandler()],
+    handlers=[logging.StreamHandler()],
 )
 logger = logging.getLogger("lastfm_collage_bot")
 
@@ -31,12 +33,14 @@ class Bot(commands.Bot):
 
     async def setup_hook(self):
         await init_db()
+        await init_cache()
         self.session = aiohttp.ClientSession(
             headers={"User-Agent": "LastFmCollageDiscordBot/1.0"},
             timeout=aiohttp.ClientTimeout(total=30, connect=10),
         )
         await self.add_cog(CollageCog(self))
         await self.add_cog(ScheduledCollageCog(self))
+        await self.add_cog(TestCommandsCog(self))
         await self.add_cog(UnsubscribeCog(self))
         await self.add_cog(ViewCollageCog(self))
         synced = await self.tree.sync()
@@ -51,6 +55,8 @@ class Bot(commands.Bot):
 
     async def close(self):
         await self.session.close()
+        await close_cache()
+        await close_db()
         await super().close()
 
 

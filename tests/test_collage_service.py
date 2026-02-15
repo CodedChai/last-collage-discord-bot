@@ -5,7 +5,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from io import BytesIO
 
-import diskcache
 import pytest
 import aiohttp
 from aioresponses import aioresponses
@@ -42,13 +41,10 @@ def make_jpeg_bytes(width=300, height=300, color=(255, 0, 0)):
 
 
 @pytest.fixture(autouse=True)
-def mock_image_cache(tmp_path, monkeypatch):
+def disable_image_cache(monkeypatch):
     import services.collage_service as cs
 
-    cache = diskcache.Cache(str(tmp_path / "cache"))
-    monkeypatch.setattr(cs, "image_cache", cache)
-    yield cache
-    cache.close()
+    monkeypatch.setattr(cs, "_cache", None)
 
 
 # --- generate_collage ---

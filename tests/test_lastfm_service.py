@@ -16,8 +16,9 @@ from services.lastfm_service import (
     _check_for_errors,
     fetch_top_tracks,
     fetch_top_albums,
+    fetch_top_artists,
 )
-from models import TopTracksModel, TopAlbumsModel
+from models import TopTracksModel, TopAlbumsModel, TopArtistsModel
 
 URL_PATTERN = re.compile(r"^http://ws\.audioscrobbler\.com/2\.0/\??.*$")
 
@@ -156,4 +157,52 @@ class TestFetchTopAlbums:
             mocked.get(URL_PATTERN, status=500)
             async with aiohttp.ClientSession() as session:
                 result = await fetch_top_albums(session, "testuser", "7day")
+        assert result is None
+
+
+# --- fetch_top_artists ---
+
+
+VALID_TOP_ARTISTS_RESPONSE = {
+    "topartists": {
+        "artist": [
+            {
+                "name": "Artist",
+                "@attr": {"rank": 1},
+                "playcount": 200,
+            }
+        ]
+    }
+}
+
+
+class TestFetchTopArtists:
+    @pytest.mark.asyncio
+    async def test_success(self):
+        with aioresponses() as mocked:
+            mocked.get(URL_PATTERN, payload=VALID_TOP_ARTISTS_RESPONSE)
+            async with aiohttp.ClientSession() as session:
+                result = await fetch_top_artists(session, "testuser", "7day")
+
+        assert isinstance(result, TopArtistsModel)
+        assert len(result.artists) == 1
+        assert result.artists[0].name == "Artist"
+        assert result.artists[0].rank == 1
+        assert result.artists[0].playcount == 200
+
+    @pytest.mark.asyncio
+    async def test_api_error_raises(self):
+        with aioresponses() as mocked:
+            mocked.get(URL_PATTERN, payload={"error": 6, "message": "User not found"})
+            async with aiohttp.ClientSession() as session:
+                with pytest.raises(LastFmError) as exc_info:
+                    await fetch_top_artists(session, "baduser", "7day")
+        assert exc_info.value.code == 6
+
+    @pytest.mark.asyncio
+    async def test_http_error_returns_none(self):
+        with aioresponses() as mocked:
+            mocked.get(URL_PATTERN, status=500)
+            async with aiohttp.ClientSession() as session:
+                result = await fetch_top_artists(session, "testuser", "7day")
         assert result is None

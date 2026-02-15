@@ -12,7 +12,7 @@ from tenacity import (
     before_sleep_log,
 )
 
-from models import TopTracksModel, TopAlbumsModel
+from models import TopTracksModel, TopAlbumsModel, TopArtistsModel
 
 load_dotenv()
 
@@ -110,4 +110,12 @@ async def fetch_top_albums(
 ) -> TopAlbumsModel | None:
     return await _fetch_lastfm(
         session, "user.getTopAlbums", username, period, TopAlbumsModel
+    )
+
+
+async def fetch_top_artists(
+    session: aiohttp.ClientSession, username: str, period: str = "7day"
+) -> TopArtistsModel | None:
+    return await _fetch_lastfm(
+        session, "user.getTopArtists", username, period, TopArtistsModel
     )

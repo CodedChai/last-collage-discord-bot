@@ -1,11 +1,13 @@
 import asyncio
+import enum
+import hashlib
 import logging
 import os
 import re
 from io import BytesIO
 
 import aiohttp
-import diskcache
+import redis.asyncio as aioredis
 from dotenv import load_dotenv
 from PIL import Image
 from tenacity import (
@@ -22,16 +24,90 @@ load_dotenv()
 
 logger = logging.getLogger("lastfm_collage_bot.collage_service")
 
-CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "image_cache")
-CACHE_SIZE_LIMIT = int(os.getenv("IMAGE_CACHE_SIZE_MB", "500")) * 1024 * 1024
-image_cache = diskcache.Cache(CACHE_DIR, size_limit=CACHE_SIZE_LIMIT)
-
 MAX_CONCURRENT_DOWNLOADS = 10
 IMAGE_DOWNLOAD_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"
 }
 FALLBACK_SIZES = ["500x500", "1000x1000", "174s"]
 SIZE_PATTERN = re.compile(r"(/i/u/)[^/]+(/)")
+
+
+class _MISS(enum.Enum):
+    MISS = "MISS"
+
+
+class ImageCache:
+    IMAGE_CACHE_TTL = 29 * 86400
+    NEGATIVE_CACHE_TTL = 6 * 3600
+    _NEGATIVE_SENTINEL = b"MISS"
+
+    def __init__(self, redis: aioredis.Redis) -> None:
+        self._redis = redis
+
+    @staticmethod
+    def _cache_key(url: str) -> str:
+        h = hashlib.sha1(url.encode("utf-8")).hexdigest()
+        return f"img:v1:{h}"
+
+    async def get_many(self, urls: list[str]) -> list[Image.Image | None | _MISS]:
+        keys = [self._cache_key(u) for u in urls]
+        try:
+            cached_values = await self._redis.mget(keys)
+        except Exception:
+            logger.warning("Redis MGET failed, treating all as cache misses")
+            return [_MISS.MISS] * len(urls)
+
+        results: list[Image.Image | None | _MISS] = []
+        for cached in cached_values:
+            if cached is None:
+                results.append(_MISS.MISS)
+            elif cached == self._NEGATIVE_SENTINEL:
+                results.append(None)
+            else:
+                results.append(Image.frombytes("RGB", (TILE_SIZE, TILE_SIZE), cached))
+        return results
+
+    async def put(self, url: str, img: Image.Image | None) -> None:
+        key = self._cache_key(url)
+        try:
+            if img is not None:
+                await self._redis.set(key, img.tobytes(), ex=self.IMAGE_CACHE_TTL)
+            else:
+                await self._redis.set(
+                    key, self._NEGATIVE_SENTINEL, ex=self.NEGATIVE_CACHE_TTL
+                )
+        except Exception:
+            logger.warning(f"Redis SET failed for {key}")
+
+    async def close(self) -> None:
+        await self._redis.close()
+
+
+_cache: ImageCache | None = None
+
+
+async def init_cache() -> None:
+    global _cache
+    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+    redis = aioredis.from_url(
+        redis_url,
+        max_connections=20,
+        socket_connect_timeout=2,
+        socket_timeout=2,
+        health_check_interval=30,
+    )
+    _cache = ImageCache(redis)
+
+
+async def close_cache() -> None:
+    global _cache
+    if _cache is not None:
+        await _cache.close()
+        _cache = None
+
+
+def get_cache() -> ImageCache | None:
+    return _cache
 
 
 @retry(
@@ -57,19 +133,13 @@ async def _download_image(
     session: aiohttp.ClientSession, url: str
 ) -> Image.Image | None:
     try:
-        cached = image_cache.get(url)
-        if cached is not None:
-            logger.info(f"Cache hit for {url}")
-            raw_bytes, size, mode = cached
-            return Image.frombytes(mode, size, raw_bytes)
-
         urls_to_try = [url] + [
             SIZE_PATTERN.sub(rf"\g<1>{size}\2", url) for size in FALLBACK_SIZES
         ]
 
         for try_url in urls_to_try:
             if try_url != url:
-                logger.info(f"Trying fallback for {url} -> {try_url}")
+                logger.debug(f"Trying fallback for {url} -> {try_url}")
             data = await _fetch_image_bytes(session, try_url)
 
             if data is not None:
@@ -78,8 +148,6 @@ async def _download_image(
 
                 if img.size != (TILE_SIZE, TILE_SIZE):
                     img = img.resize((TILE_SIZE, TILE_SIZE), Image.Resampling.LANCZOS)
-
-                image_cache.set(url, (img.tobytes(), img.size, img.mode))
 
                 return img
 
@@ -96,20 +164,44 @@ async def _download_image(
 async def download_album_images(
     session: aiohttp.ClientSession, albums: list[AlbumModel]
 ) -> list[Image.Image | None]:
-    semaphore = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS)
-
-    async def _limited_download(url: str) -> Image.Image | None:
-        async with semaphore:
-            return await _download_image(session, url)
-
+    cache = get_cache()
     albums_with_urls = [(i, a) for i, a in enumerate(albums) if a.image_url]
-    downloaded = await asyncio.gather(
-        *(_limited_download(album.image_url) for _, album in albums_with_urls)
-    )
+    urls = [a.image_url for _, a in albums_with_urls]
 
     images: list[Image.Image | None] = [None] * len(albums)
-    for (i, _), img in zip(albums_with_urls, downloaded):
-        images[i] = img
+    to_download: list[tuple[int, str]] = []
+
+    if cache is not None:
+        cached_results = await cache.get_many(urls)
+        cache_hits = 0
+        for (i, _album), url, cached in zip(albums_with_urls, urls, cached_results):
+            if cached is _MISS.MISS:
+                to_download.append((i, url))
+            elif cached is None:
+                pass  # negative-cached, leave as None
+            else:
+                cache_hits += 1
+                images[i] = cached
+        if cache_hits:
+            logger.debug(f"Cache hits: {cache_hits}/{len(urls)}")
+    else:
+        to_download = [(i, url) for (i, _), url in zip(albums_with_urls, urls)]
+
+    if to_download:
+        semaphore = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS)
+
+        async def _limited_download(url: str) -> Image.Image | None:
+            async with semaphore:
+                return await _download_image(session, url)
+
+        downloaded = await asyncio.gather(
+            *(_limited_download(url) for _, url in to_download)
+        )
+
+        for (i, url), img in zip(to_download, downloaded):
+            images[i] = img
+            if cache is not None:
+                await cache.put(url, img)
 
     successful_downloads = sum(1 for img in images if img is not None)
     logger.info(
