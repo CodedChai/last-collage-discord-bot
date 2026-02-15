@@ -1,7 +1,7 @@
 import asyncio
+import hashlib
 import logging
 import os
-import pickle
 import re
 from io import BytesIO
 
@@ -25,7 +25,9 @@ logger = logging.getLogger("lastfm_collage_bot.collage_service")
 
 _redis: aioredis.Redis | None = None
 
-IMAGE_CACHE_TTL = 86400
+IMAGE_CACHE_TTL = 29 * 86400
+NEGATIVE_CACHE_TTL = 6 * 3600
+NEGATIVE_SENTINEL = b"MISS"
 
 MAX_CONCURRENT_DOWNLOADS = 10
 IMAGE_DOWNLOAD_HEADERS = {
@@ -35,10 +37,21 @@ FALLBACK_SIZES = ["500x500", "1000x1000", "174s"]
 SIZE_PATTERN = re.compile(r"(/i/u/)[^/]+(/)")
 
 
+def _cache_key(url: str) -> str:
+    h = hashlib.sha1(url.encode("utf-8")).hexdigest()
+    return f"img:v1:{h}"
+
+
 async def init_cache() -> None:
     global _redis
     redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
-    _redis = aioredis.from_url(redis_url)
+    _redis = aioredis.from_url(
+        redis_url,
+        max_connections=20,
+        socket_connect_timeout=2,
+        socket_timeout=2,
+        health_check_interval=30,
+    )
 
 
 async def close_cache() -> None:
@@ -75,22 +88,13 @@ async def _download_image(
     session: aiohttp.ClientSession, url: str
 ) -> Image.Image | None:
     try:
-        redis = _get_redis()
-
-        if redis is not None:
-            cached = await redis.get(url)
-            if cached is not None:
-                logger.info(f"Cache hit for {url}")
-                raw_bytes, size, mode = pickle.loads(cached)
-                return Image.frombytes(mode, size, raw_bytes)
-
         urls_to_try = [url] + [
             SIZE_PATTERN.sub(rf"\g<1>{size}\2", url) for size in FALLBACK_SIZES
         ]
 
         for try_url in urls_to_try:
             if try_url != url:
-                logger.info(f"Trying fallback for {url} -> {try_url}")
+                logger.debug(f"Trying fallback for {url} -> {try_url}")
             data = await _fetch_image_bytes(session, try_url)
 
             if data is not None:
@@ -99,13 +103,6 @@ async def _download_image(
 
                 if img.size != (TILE_SIZE, TILE_SIZE):
                     img = img.resize((TILE_SIZE, TILE_SIZE), Image.Resampling.LANCZOS)
-
-                if redis is not None:
-                    await redis.set(
-                        url,
-                        pickle.dumps((img.tobytes(), img.size, img.mode)),
-                        ex=IMAGE_CACHE_TTL,
-                    )
 
                 return img
 
@@ -122,20 +119,63 @@ async def _download_image(
 async def download_album_images(
     session: aiohttp.ClientSession, albums: list[AlbumModel]
 ) -> list[Image.Image | None]:
-    semaphore = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS)
-
-    async def _limited_download(url: str) -> Image.Image | None:
-        async with semaphore:
-            return await _download_image(session, url)
-
+    redis = _get_redis()
     albums_with_urls = [(i, a) for i, a in enumerate(albums) if a.image_url]
-    downloaded = await asyncio.gather(
-        *(_limited_download(album.image_url) for _, album in albums_with_urls)
-    )
+    urls = [a.image_url for _, a in albums_with_urls]
+    keys = [_cache_key(u) for u in urls]
 
     images: list[Image.Image | None] = [None] * len(albums)
-    for (i, _), img in zip(albums_with_urls, downloaded):
-        images[i] = img
+    misses: list[tuple[int, int, str, str]] = []
+
+    if redis is not None:
+        try:
+            cached_values = await redis.mget(keys)
+        except Exception:
+            logger.warning("Redis MGET failed, treating all as cache misses")
+            cached_values = [None] * len(keys)
+
+        cache_hits = 0
+        for idx, ((i, _album), cached) in enumerate(
+            zip(albums_with_urls, cached_values)
+        ):
+            if cached is not None:
+                if cached == NEGATIVE_SENTINEL:
+                    continue
+                cache_hits += 1
+                images[i] = Image.frombytes(
+                    "RGB", (TILE_SIZE, TILE_SIZE), cached
+                )
+            else:
+                misses.append((i, idx, urls[idx], keys[idx]))
+
+        if cache_hits:
+            logger.debug(f"Cache hits: {cache_hits}/{len(keys)}")
+    else:
+        misses = [(i, idx, urls[idx], keys[idx]) for idx, (i, _) in enumerate(albums_with_urls)]
+
+    if misses:
+        semaphore = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS)
+
+        async def _limited_download(url: str) -> Image.Image | None:
+            async with semaphore:
+                return await _download_image(session, url)
+
+        downloaded = await asyncio.gather(
+            *(_limited_download(url) for _, _, url, _ in misses)
+        )
+
+        for (i, _idx, _url, key), img in zip(misses, downloaded):
+            images[i] = img
+            if redis is not None:
+                try:
+                    if img is not None:
+                        await redis.set(key, img.tobytes(), ex=IMAGE_CACHE_TTL)
+                    else:
+                        await redis.set(
+                            key, NEGATIVE_SENTINEL, ex=NEGATIVE_CACHE_TTL
+                        )
+                except Exception:
+                    logger.warning(f"Redis SET failed for {key}")
 
     successful_downloads = sum(1 for img in images if img is not None)
     logger.info(
