@@ -175,6 +175,6 @@ def compose_collage(
         collage.paste(img, (col * TILE_SIZE, row * TILE_SIZE))
 
     buffer = BytesIO()
-    collage.save(buffer, format="JPEG", quality=92, progressive=True)
+    collage.save(buffer, format="WEBP", quality=85)
     buffer.seek(0)
     return buffer

@@ -64,14 +64,16 @@ class ImageCache:
             elif cached == self._NEGATIVE_SENTINEL:
                 results.append(None)
             else:
-                results.append(Image.frombytes("RGB", (TILE_SIZE, TILE_SIZE), cached))
+                results.append(Image.open(BytesIO(cached)).convert("RGB"))
         return results
 
     async def put(self, url: str, img: Image.Image | None) -> None:
         key = self._cache_key(url)
         try:
             if img is not None:
-                await self._redis.set(key, img.tobytes(), ex=self.IMAGE_CACHE_TTL)
+                buf = BytesIO()
+                img.save(buf, format="JPEG", quality=90)
+                await self._redis.set(key, buf.getvalue(), ex=self.IMAGE_CACHE_TTL)
             else:
                 await self._redis.set(
                     key, self._NEGATIVE_SENTINEL, ex=self.NEGATIVE_CACHE_TTL
