@@ -50,7 +50,7 @@ class TestSendCollage:
         call_kwargs = destination.send.call_args.kwargs
         assert call_kwargs["embed"] is embed
         assert isinstance(call_kwargs["file"], discord.File)
-        assert embed.image.url == "attachment://collage.jpg"
+        assert embed.image.url == "attachment://collage.webp"
 
     @pytest.mark.asyncio
     async def test_none_albums_sends_embed_only(self):

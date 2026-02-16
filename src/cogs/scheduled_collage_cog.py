@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import logging
 import traceback
@@ -139,13 +140,20 @@ class ScheduledCollageCog(commands.Cog):
         if channel is None:
             return
 
-        user_data_list = []
+        semaphore = asyncio.Semaphore(3)
 
+        async def _limited_post(schedule: WeeklySchedule):
+            async with semaphore:
+                return await self._post_single_collage(guild, channel, schedule)
+
+        tasks = []
         for schedule in schedules:
+            tasks.append(asyncio.create_task(_limited_post(schedule)))
+
+        user_data_list = []
+        for schedule, task in zip(schedules, tasks):
             try:
-                _, listening_data = await self._post_single_collage(
-                    guild, channel, schedule
-                )
+                _, listening_data = await task
                 if listening_data is not None:
                     user_data_list.append(listening_data)
             except Exception:
@@ -153,7 +161,6 @@ class ScheduledCollageCog(commands.Cog):
                     f"Error posting weekly collage for {schedule.lastfm_username}",
                     exc_info=True,
                 )
-                continue
 
         if len(user_data_list) >= 2:
             summary = compute_group_summary(user_data_list)

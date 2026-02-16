@@ -52,7 +52,7 @@ def disable_image_cache(monkeypatch):
 
 class TestGenerateCollage:
     @pytest.mark.asyncio
-    async def test_2x2_collage_returns_valid_jpeg(self):
+    async def test_2x2_collage_returns_valid_webp(self):
         albums = [
             make_album(
                 name=f"Album {i}",
@@ -73,8 +73,9 @@ class TestGenerateCollage:
 
         assert isinstance(result, BytesIO)
         data = result.getvalue()
-        # JPEG magic bytes: FF D8 FF
-        assert data[:3] == b"\xff\xd8\xff"
+        # WebP magic bytes: RIFF....WEBP
+        assert data[:4] == b"RIFF"
+        assert data[8:12] == b"WEBP"
 
     @pytest.mark.asyncio
     async def test_2x2_collage_dimensions(self):
