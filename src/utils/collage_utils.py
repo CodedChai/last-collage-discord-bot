@@ -129,7 +129,8 @@ def determine_dynamic_grid_size(albums: list[AlbumModel]) -> tuple[int, int]:
         if i > 0:
             prev_count = best[0] * best[1]
             first_new_album = albums[prev_count]
-            if first_new_album.playcount <= 1:
+            min_plays = 3 if cols * rows > 16 else 2
+            if first_new_album.playcount < min_plays:
                 break
         best = (cols, rows)
     return best
