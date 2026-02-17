@@ -4,6 +4,7 @@ import hashlib
 import logging
 import os
 import re
+import time
 from io import BytesIO
 
 import aiohttp
@@ -18,6 +19,12 @@ from tenacity import (
 )
 
 from models import AlbumModel
+from services.metrics_service import (
+    IMAGE_CACHE_HITS,
+    IMAGE_CACHE_MISSES,
+    IMAGE_DOWNLOAD_LATENCY,
+    COLLAGE_GENERATION_LATENCY,
+)
 from utils.collage_utils import TILE_SIZE, compose_collage, DEFAULT_GRID_SIZE
 
 load_dotenv()
@@ -184,6 +191,8 @@ async def download_album_images(
             else:
                 cache_hits += 1
                 images[i] = cached
+        IMAGE_CACHE_HITS.add(cache_hits)
+        IMAGE_CACHE_MISSES.add(len(to_download))
         if cache_hits:
             logger.debug(f"Cache hits: {cache_hits}/{len(urls)}")
     else:
@@ -194,7 +203,11 @@ async def download_album_images(
 
         async def _limited_download(url: str) -> Image.Image | None:
             async with semaphore:
-                return await _download_image(session, url)
+                dl_start = time.perf_counter()
+                try:
+                    return await _download_image(session, url)
+                finally:
+                    IMAGE_DOWNLOAD_LATENCY.record(time.perf_counter() - dl_start)
 
         downloaded = await asyncio.gather(
             *(_limited_download(url) for _, url in to_download)
@@ -217,19 +230,23 @@ async def generate_collage(
     albums: list[AlbumModel],
     grid_size: int | tuple[int, int] = DEFAULT_GRID_SIZE,
 ) -> BytesIO:
-    if isinstance(grid_size, tuple):
-        grid_cols, grid_rows = grid_size
-    else:
-        grid_cols = grid_rows = grid_size
+    start = time.perf_counter()
+    try:
+        if isinstance(grid_size, tuple):
+            grid_cols, grid_rows = grid_size
+        else:
+            grid_cols = grid_rows = grid_size
 
-    total_slots = grid_cols * grid_rows
-    selected_albums = albums[:total_slots]
-    logger.info(
-        f"Generating {grid_cols}x{grid_rows} collage with {len(selected_albums)} albums"
-    )
+        total_slots = grid_cols * grid_rows
+        selected_albums = albums[:total_slots]
+        logger.info(
+            f"Generating {grid_cols}x{grid_rows} collage with {len(selected_albums)} albums"
+        )
 
-    images = await download_album_images(session, selected_albums)
-    result = compose_collage(images, selected_albums, grid_size)
+        images = await download_album_images(session, selected_albums)
+        result = compose_collage(images, selected_albums, grid_size)
 
-    logger.info("Collage generated successfully")
-    return result
+        logger.info("Collage generated successfully")
+        return result
+    finally:
+        COLLAGE_GENERATION_LATENCY.record(time.perf_counter() - start)

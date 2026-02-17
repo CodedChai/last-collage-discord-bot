@@ -15,6 +15,7 @@ from cogs.unsubscribe_cog import UnsubscribeCog
 from cogs.view_collage_cog import ViewCollageCog
 from services.db_service import init_db, close_db, get_scheduled_guild_ids
 from services.collage_service import init_cache, close_cache
+from services.metrics_service import start_metrics, ACTIVE_GUILDS
 
 load_dotenv()
 
@@ -32,6 +33,7 @@ class Bot(commands.Bot):
         super().__init__(command_prefix=commands.when_mentioned, intents=intents)
 
     async def setup_hook(self):
+        start_metrics()
         await init_db()
         await init_cache()
         self.session = aiohttp.ClientSession(
@@ -51,7 +53,14 @@ class Bot(commands.Bot):
             logger.info(f"Synced {len(guild_synced)} command(s) to guild {guild_id}")
 
     async def on_ready(self):
+        ACTIVE_GUILDS.set(len(self.guilds))
         logger.info(f"Bot ready: logged in as {self.user}")
+
+    async def on_guild_join(self, guild):
+        ACTIVE_GUILDS.inc()
+
+    async def on_guild_remove(self, guild):
+        ACTIVE_GUILDS.dec()
 
     async def close(self):
         await self.session.close()

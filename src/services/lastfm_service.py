@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 
 import aiohttp
 from dotenv import load_dotenv
@@ -13,6 +14,7 @@ from tenacity import (
 )
 
 from models import TopTracksModel, TopAlbumsModel, TopArtistsModel
+from services.metrics_service import LASTFM_REQUEST_LATENCY, LASTFM_REQUEST_COUNT
 
 load_dotenv()
 
@@ -72,6 +74,8 @@ async def _fetch_lastfm(
         "user": username,
         "period": period,
     }
+    start = time.perf_counter()
+    status = "error"
     try:
         async with session.get(BASE_URL, params=params) as response:
             if response.status == 200:
@@ -79,6 +83,7 @@ async def _fetch_lastfm(
                 _check_for_errors(data)
                 result = model_cls.model_validate(data)
                 logger.info(f"Successfully fetched {method} for {username}")
+                status = "success"
                 return result
             else:
                 logger.error(
@@ -95,6 +100,10 @@ async def _fetch_lastfm(
             f"Unexpected error fetching {method} for {username}: {e}", exc_info=True
         )
         return None
+    finally:
+        duration = time.perf_counter() - start
+        LASTFM_REQUEST_LATENCY.record(duration, {"method": method})
+        LASTFM_REQUEST_COUNT.add(1, {"method": method, "status": status})
 
 
 async def fetch_top_tracks(
