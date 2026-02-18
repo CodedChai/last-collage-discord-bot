@@ -34,10 +34,10 @@ async def fetch_all_users_data(
             member = await fetch_member_safe(guild, schedule.discord_user_id)
             display_name = get_display_name(member, schedule.lastfm_username)
 
-            listening_data = await fetch_user_listening_data(
+            result = await fetch_user_listening_data(
                 bot.session, schedule.lastfm_username, display_name
             )
-            user_data_list.append(listening_data)
+            user_data_list.append(result.listening_data)
 
         except Exception:
             logger.error(

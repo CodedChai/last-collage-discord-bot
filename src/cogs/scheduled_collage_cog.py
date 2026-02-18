@@ -173,33 +173,23 @@ class ScheduledCollageCog(commands.Cog):
         member = await fetch_member_safe(guild, schedule.discord_user_id)
         display_name = get_display_name(member, schedule.lastfm_username)
 
-        listening_data = await fetch_user_listening_data(
+        result = await fetch_user_listening_data(
             self.bot.session, schedule.lastfm_username, display_name
         )
 
         title = f"{display_name}'s Weekly Collage"
-        has_data = (listening_data.albums and len(listening_data.albums) > 0) or (
-            listening_data.tracks and len(listening_data.tracks) > 0
-        )
+        has_albums = result.top_albums and result.top_albums.albums
+        has_tracks = result.top_tracks and result.top_tracks.tracks
 
-        if has_data:
-            from services.lastfm_service import fetch_top_albums, fetch_top_tracks
-
-            top_tracks = await fetch_top_tracks(
-                self.bot.session, schedule.lastfm_username, "7day"
-            )
-            top_albums = await fetch_top_albums(
-                self.bot.session, schedule.lastfm_username, "7day"
-            )
-
+        if has_albums or has_tracks:
             await send_collage_from_data(
-                channel, self.bot.session, title, top_tracks, top_albums
+                channel, self.bot.session, title, result.top_tracks, result.top_albums
             )
 
         logger.info(
             f"Posted weekly collage for {schedule.lastfm_username} in guild {guild.id}"
         )
-        return display_name, listening_data
+        return display_name, result.listening_data
 
     @post_weekly_collages.before_loop
     async def before_post_weekly_collages(self):

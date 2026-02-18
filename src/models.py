@@ -69,18 +69,6 @@ class TopAlbumsModel(BaseModel):
     albums: List[AlbumModel] = Field(validation_alias=AliasPath("topalbums", "album"))
 
 
-class ArtistModel(BaseModel):
-    name: str
-    rank: int = Field(validation_alias=AliasPath("@attr", "rank"))
-    playcount: int
-
-
-class TopArtistsModel(BaseModel):
-    artists: List[ArtistModel] = Field(
-        validation_alias=AliasPath("topartists", "artist")
-    )
-
-
 # --- User input models ---
 
 
