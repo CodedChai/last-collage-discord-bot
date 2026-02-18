@@ -1,11 +1,17 @@
 import logging
 import os
 
-from opentelemetry import metrics
+from opentelemetry import metrics, trace
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.aiohttp_client import AioHttpClientInstrumentor
+from opentelemetry.instrumentation.asyncpg import AsyncPGInstrumentor
+from opentelemetry.instrumentation.redis import RedisInstrumentor
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 logger = logging.getLogger("lastfm_collage_bot.metrics")
 
@@ -117,6 +123,14 @@ ACTIVE_GUILDS = _GuildGauge()
 
 
 def start_metrics():
+    _tracer_provider = TracerProvider(resource=_resource)
+    _tracer_provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+    trace.set_tracer_provider(_tracer_provider)
+
+    AioHttpClientInstrumentor().instrument()
+    AsyncPGInstrumentor().instrument()
+    RedisInstrumentor().instrument()
+
     logger.info(
-        "OpenTelemetry metrics configured (export interval: 60s)"
+        "OpenTelemetry metrics and tracing configured (export interval: 60s)"
     )
