@@ -5,7 +5,7 @@ from io import BytesIO
 
 from PIL import Image, ImageDraw, ImageFont
 
-from models import AlbumModel
+from models import AlbumModel, TopArtistsModel
 
 logger = logging.getLogger("lastfm_collage_bot.collage_utils")
 
@@ -134,6 +134,22 @@ def determine_dynamic_grid_size(albums: list[AlbumModel]) -> tuple[int, int]:
                 break
         best = (cols, rows)
     return best
+
+
+def build_artist_rank_map(top_artists: TopArtistsModel | None) -> dict[str, int]:
+    if not top_artists or not top_artists.artists:
+        return {}
+    return {artist.name.lower(): artist.rank for artist in top_artists.artists}
+
+
+def sort_with_artist_tiebreak(items, artist_rank_map: dict[str, int]):
+    if not artist_rank_map or not items:
+        return items
+    fallback = max(artist_rank_map.values(), default=0) + 1
+    return sorted(
+        items,
+        key=lambda item: (-item.playcount, artist_rank_map.get(item.artist.lower(), fallback)),
+    )
 
 
 def resolve_grid_size(

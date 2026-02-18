@@ -183,7 +183,8 @@ class ScheduledCollageCog(commands.Cog):
 
         if has_albums or has_tracks:
             await send_collage_from_data(
-                channel, self.bot.session, title, result.top_tracks, result.top_albums
+                channel, self.bot.session, title, result.top_tracks, result.top_albums,
+                top_artists=result.top_artists,
             )
 
         logger.info(

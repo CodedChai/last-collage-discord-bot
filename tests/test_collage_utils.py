@@ -5,13 +5,15 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from PIL import Image, ImageDraw, ImageFont
 
-from models import AlbumModel
+from models import AlbumModel, TopArtistsModel, TrackModel
 from utils.collage_utils import (
     TILE_SIZE,
     _add_overlay,
     _create_placeholder,
     _wrap_text,
+    build_artist_rank_map,
     determine_dynamic_grid_size,
+    sort_with_artist_tiebreak,
 )
 
 
@@ -127,3 +129,88 @@ class TestWrapText:
         font = ImageFont.load_default()
         lines = _wrap_text(draw, "Superlongword", font, max_width=200)
         assert lines == ["Superlongword"]
+
+
+# --- Helpers for tiebreak tests ---
+
+
+def make_track(name="Track", artist="Artist", rank=1, playcount=10):
+    return TrackModel.model_validate(
+        {
+            "name": name,
+            "artist": {"name": artist},
+            "@attr": {"rank": rank},
+            "playcount": playcount,
+        }
+    )
+
+
+def make_top_artists(artists_data):
+    return TopArtistsModel.model_validate(
+        {
+            "topartists": {
+                "artist": [
+                    {"name": name, "@attr": {"rank": rank}, "playcount": pc}
+                    for name, rank, pc in artists_data
+                ]
+            }
+        }
+    )
+
+
+# --- build_artist_rank_map ---
+
+
+class TestBuildArtistRankMap:
+    def test_returns_empty_for_none(self):
+        assert build_artist_rank_map(None) == {}
+
+    def test_builds_lowercase_map(self):
+        top_artists = make_top_artists([("Radiohead", 1, 50), ("Björk", 2, 30)])
+        result = build_artist_rank_map(top_artists)
+        assert result == {"radiohead": 1, "björk": 2}
+
+
+# --- sort_with_artist_tiebreak ---
+
+
+class TestSortWithArtistTiebreak:
+    def test_no_op_when_no_artist_map(self):
+        tracks = [make_track(playcount=5), make_track(playcount=10)]
+        result = sort_with_artist_tiebreak(tracks, {})
+        assert result is tracks
+
+    def test_sorts_by_playcount_descending(self):
+        tracks = [
+            make_track(name="Low", artist="A", playcount=3),
+            make_track(name="High", artist="B", playcount=10),
+        ]
+        result = sort_with_artist_tiebreak(tracks, {"a": 1, "b": 2})
+        assert [t.name for t in result] == ["High", "Low"]
+
+    def test_tiebreaks_by_artist_rank(self):
+        tracks = [
+            make_track(name="T1", artist="Worse", playcount=5),
+            make_track(name="T2", artist="Better", playcount=5),
+        ]
+        artist_map = {"better": 1, "worse": 3}
+        result = sort_with_artist_tiebreak(tracks, artist_map)
+        assert [t.name for t in result] == ["T2", "T1"]
+
+    def test_unknown_artist_sorted_last(self):
+        tracks = [
+            make_track(name="T1", artist="Unknown", playcount=5),
+            make_track(name="T2", artist="Known", playcount=5),
+        ]
+        artist_map = {"known": 1}
+        result = sort_with_artist_tiebreak(tracks, artist_map)
+        assert [t.name for t in result] == ["T2", "T1"]
+
+    def test_works_with_albums(self):
+        albums = [
+            make_album(name="A1", artist="Worse", playcount=5),
+            make_album(name="A2", artist="Better", playcount=5),
+        ]
+        artist_map = {"better": 1, "worse": 2}
+        result = sort_with_artist_tiebreak(albums, artist_map)
+        assert [a.name for a in result] == ["A2", "A1"]

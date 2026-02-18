@@ -4,9 +4,9 @@ import logging
 import discord
 
 from services.collage_service import generate_collage
-from services.lastfm_service import fetch_top_tracks, fetch_top_albums
+from services.lastfm_service import fetch_top_tracks, fetch_top_albums, fetch_top_artists
 from services.metrics_service import track_command
-from utils.collage_utils import resolve_grid_size
+from utils.collage_utils import resolve_grid_size, build_artist_rank_map, sort_with_artist_tiebreak
 from utils.embed_utils import build_collage_embed
 
 logger = logging.getLogger("lastfm_collage_bot.messaging")
@@ -22,9 +22,10 @@ async def fetch_and_send_collage(
     grid_size_str: str = "dynamic",
 ) -> bool:
     """Fetch Last.fm data and send a collage. Returns True if data was found and sent."""
-    top_tracks, top_albums = await asyncio.gather(
+    top_tracks, top_albums, top_artists = await asyncio.gather(
         fetch_top_tracks(session, username, period),
         fetch_top_albums(session, username, period),
+        fetch_top_artists(session, username, period),
     )
 
     has_albums = top_albums and top_albums.albums
@@ -32,6 +33,12 @@ async def fetch_and_send_collage(
 
     if not has_albums and not has_tracks:
         return False
+
+    artist_rank_map = build_artist_rank_map(top_artists)
+    if has_tracks:
+        top_tracks.tracks = sort_with_artist_tiebreak(top_tracks.tracks, artist_rank_map)
+    if has_albums:
+        top_albums.albums = sort_with_artist_tiebreak(top_albums.albums, artist_rank_map)
 
     grid_size = resolve_grid_size(
         grid_size_str, top_albums.albums if has_albums else None
@@ -62,10 +69,18 @@ async def send_collage_from_data(
     title: str,
     top_tracks,
     top_albums,
+    top_artists=None,
     grid_size_str: str = "dynamic",
 ):
     """Send a collage from already-fetched data. Used by weekly scheduler to avoid double-fetching."""
     has_albums = top_albums and top_albums.albums
+    has_tracks = top_tracks and top_tracks.tracks
+
+    artist_rank_map = build_artist_rank_map(top_artists)
+    if has_tracks:
+        top_tracks.tracks = sort_with_artist_tiebreak(top_tracks.tracks, artist_rank_map)
+    if has_albums:
+        top_albums.albums = sort_with_artist_tiebreak(top_albums.albums, artist_rank_map)
 
     grid_size = resolve_grid_size(
         grid_size_str, top_albums.albums if has_albums else None
