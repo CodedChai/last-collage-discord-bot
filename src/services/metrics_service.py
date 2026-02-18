@@ -123,14 +123,23 @@ ACTIVE_GUILDS = _GuildGauge()
 
 
 def start_metrics():
+    endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "not set")
+    headers = os.getenv("OTEL_EXPORTER_OTLP_HEADERS", "not set")
+    logger.info(f"OTLP endpoint: {endpoint}")
+    logger.info(f"OTLP headers configured: {headers != 'not set'}")
+
     _tracer_provider = TracerProvider(resource=_resource)
     _tracer_provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
     trace.set_tracer_provider(_tracer_provider)
 
     AioHttpClientInstrumentor().instrument()
+    logger.info("Instrumented: aiohttp-client")
     AsyncPGInstrumentor().instrument()
+    logger.info("Instrumented: asyncpg")
     RedisInstrumentor().instrument()
+    logger.info("Instrumented: redis")
 
     logger.info(
-        "OpenTelemetry metrics and tracing configured (export interval: 60s)"
+        "OpenTelemetry metrics and tracing configured (export interval: 60s, "
+        f"service: {os.getenv('OTEL_SERVICE_NAME', 'lastfm-collage-bot')})"
     )
