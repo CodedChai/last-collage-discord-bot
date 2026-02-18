@@ -1,5 +1,7 @@
+import functools
 import logging
 import os
+import time
 
 from opentelemetry import metrics, trace
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
@@ -120,6 +122,26 @@ class _GuildGauge:
 
 
 ACTIVE_GUILDS = _GuildGauge()
+
+
+def track_command(command_name: str):
+    """Decorator that records COMMAND_COUNT and COMMAND_LATENCY for a command."""
+    def decorator(func):
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            start = time.perf_counter()
+            status = "success"
+            try:
+                return await func(*args, **kwargs)
+            except Exception:
+                status = "error"
+                raise
+            finally:
+                duration = time.perf_counter() - start
+                COMMAND_LATENCY.record(duration, {"command": command_name})
+                COMMAND_COUNT.add(1, {"command": command_name, "status": status})
+        return wrapper
+    return decorator
 
 
 def start_metrics():

@@ -26,6 +26,7 @@ from services.weekly_collage_service import (
     get_display_name,
 )
 from cogs.messaging import send_collage_from_data
+from services.metrics_service import track_command
 
 logger = logging.getLogger("lastfm_collage_bot.scheduled_collage_cog")
 
@@ -106,6 +107,7 @@ class ScheduledCollageCog(commands.Cog):
         description="Join the weekly collage schedule for this channel",
     )
     @app_commands.guild_only()
+    @track_command("join_weekly_collage")
     async def schedule_weekly_collage(self, interaction: discord.Interaction):
         cached_username = await get_lastfm_username(interaction.user.id)
         await interaction.response.send_modal(

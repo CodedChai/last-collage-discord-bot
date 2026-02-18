@@ -10,6 +10,7 @@ from services.lastfm_service import LastFmError
 from services.db_service import get_lastfm_username, save_user_preference
 from utils.embed_utils import PERIOD_LABELS
 from cogs.messaging import fetch_and_send_collage
+from services.metrics_service import track_command
 
 logger = logging.getLogger("lastfm_collage_bot.collage_cog")
 
@@ -134,6 +135,7 @@ class CollageCog(commands.Cog):
         name="collage",
         description="Create a collage of your top albums and tracks from Last.fm",
     )
+    @track_command("create_collage")
     async def create_collage(self, interaction: discord.Interaction):
         cached_username = await get_lastfm_username(interaction.user.id)
         await interaction.response.send_modal(

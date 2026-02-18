@@ -17,6 +17,7 @@ from services.weekly_collage_service import (
     fetch_member_safe,
     get_display_name,
 )
+from services.metrics_service import track_command
 
 logger = logging.getLogger("lastfm_collage_bot.test_commands_cog")
 
@@ -59,6 +60,7 @@ class TestCommandsCog(commands.Cog):
         description="[TEST] Preview weekly summary for this channel (ephemeral)",
     )
     @app_commands.guild_only()
+    @track_command("test_weekly_summary")
     async def test_weekly_summary(self, interaction: discord.Interaction):
         """Test command to preview weekly summary without posting to channel."""
         await interaction.response.defer(ephemeral=True)

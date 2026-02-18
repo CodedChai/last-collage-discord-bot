@@ -3,6 +3,7 @@ import logging
 from discord import app_commands
 from discord.ext import commands
 from services.db_service import delete_weekly_schedule
+from services.metrics_service import track_command
 
 logger = logging.getLogger("lastfm_collage_bot.unsubscribe_cog")
 
@@ -16,6 +17,7 @@ class UnsubscribeCog(commands.Cog):
         description="Unsubscribe from the weekly collage schedule for this channel",
     )
     @app_commands.guild_only()
+    @track_command("unsubscribe_weekly_collage")
     async def unsubscribe_weekly_collage(self, interaction):
         removed = await delete_weekly_schedule(
             interaction.user.id, interaction.guild_id
