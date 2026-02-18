@@ -115,7 +115,7 @@ class CollageModal(discord.ui.Modal, title="Create Collage"):
                     "An error occurred while creating the collage. Please try again later.",
                     ephemeral=True,
                 )
-            except:
+            except Exception:
                 pass
 
     async def on_error(
@@ -135,6 +135,7 @@ class CollageCog(commands.Cog):
         name="collage",
         description="Create a collage of your top albums and tracks from Last.fm",
     )
+    @app_commands.checks.cooldown(1, 30)
     @track_command("create_collage")
     async def create_collage(self, interaction: discord.Interaction):
         cached_username = await get_lastfm_username(interaction.user.id)

@@ -1,5 +1,6 @@
-__pycache__
-bot-env
+**/__pycache__/
+bot-env/
 image_cache/
 *.db
+*.log
 .env

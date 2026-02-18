@@ -10,9 +10,17 @@ def format_summary_text(summary: GroupSummary) -> str:
 
     if summary.most_overlapping:
         o = summary.most_overlapping
+        parts = []
+        if o.shared_artists:
+            parts.append(f"{len(o.shared_artists)} artist{'s' if len(o.shared_artists) != 1 else ''}")
+        if o.shared_albums:
+            parts.append(f"{len(o.shared_albums)} album{'s' if len(o.shared_albums) != 1 else ''}")
+        if o.shared_tracks:
+            parts.append(f"{len(o.shared_tracks)} track{'s' if len(o.shared_tracks) != 1 else ''}")
+        shared_detail = ", ".join(parts)
         lines.append(
             f"🎵 **{o.user_a}** and **{o.user_b}** have the most in common "
-            f"({o.total_shared} shared items)!"
+            f"({shared_detail})!"
         )
     else:
         lines.append("🎵 Everyone has pretty unique taste — no overlap found!")

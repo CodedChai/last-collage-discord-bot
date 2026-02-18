@@ -26,7 +26,7 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)],
 )
 logger = logging.getLogger("lastfm_collage_bot")
-logging.getLogger("opentelemetry").setLevel(logging.DEBUG)
+logging.getLogger("opentelemetry").setLevel(logging.WARNING)
 
 
 class Bot(commands.Bot):
