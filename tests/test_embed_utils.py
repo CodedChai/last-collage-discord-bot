@@ -135,7 +135,7 @@ class TestBuildCollageEmbed:
     def test_all_tracks_below_min_plays_shows_friendly_message(self):
         top_tracks = _make_top_tracks([("Low", "Artist", 1), ("Also Low", "Artist", 1)])
         embed = build_collage_embed("T", top_tracks, "7day")
-        assert embed.description == "*Tracks were found, but none had 2 or more plays.*"
+        assert embed.description == "*Found some tracks, but they're all one-hit wonders… literally.*"
 
     def test_footer_contains_period_label(self):
         for period_val, label in PERIOD_LABELS.items():

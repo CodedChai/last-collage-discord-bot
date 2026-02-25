@@ -32,7 +32,7 @@ def build_collage_embed(title, top_tracks, period_val):
         count = len(eligible[:5])
         description = f"**Top {count} Track{'s' if count != 1 else ''}:**\n{formatted}"
     elif top_tracks and top_tracks.tracks:
-        description = "*Tracks were found, but none had 2 or more plays.*"
+        description = "*Found some tracks, but they're all one-hit wonders… literally.*"
     else:
         description = "*No tracks found for this period.*"
 
