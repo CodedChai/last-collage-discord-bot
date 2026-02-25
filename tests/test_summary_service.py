@@ -150,7 +150,7 @@ class TestComputeGroupSummary:
         b = _make_user("Bob", artists=["X", "Y", "W"])
         c = _make_user("Charlie", artists=["Q", "R", "S"])
         summary = compute_group_summary([a, b, c])
-        assert summary.biggest_outlier == "Charlie"
+        assert summary.biggest_outlier.name == "Charlie"
         assert summary.most_overlapping.user_a == "Alice"
         assert summary.most_overlapping.user_b == "Bob"
 
@@ -205,7 +205,7 @@ class TestFormatSummaryText:
         summary = compute_group_summary([a, b, c])
         text = format_summary_text(summary)
         assert "Charlie" in text
-        assert "outlier" in text
+        assert "marches to their own beat" in text
 
     def test_includes_popular(self):
         a = _make_user("A", artists=["Radiohead", "Bjork"])
@@ -216,6 +216,18 @@ class TestFormatSummaryText:
         assert "Group Favorite" in text
         # Check that usernames are shown
         assert "(A, B)" in text
+
+    def test_popular_tracks_require_min_2_plays(self):
+        """Tracks with only 1 play should not appear in popular tracks"""
+        a = _make_user("A", tracks={("Shared", "Track"): 1})
+        b = _make_user("B", tracks={("Shared", "Track"): 1})
+        summary = compute_group_summary([a, b])
+        assert len(summary.popular_tracks) == 0
+
+        a2 = _make_user("A", tracks={("Shared", "Track"): 2})
+        b2 = _make_user("B", tracks={("Shared", "Track"): 2})
+        summary2 = compute_group_summary([a2, b2])
+        assert len(summary2.popular_tracks) == 1
 
     def test_popular_tracks_include_youtube_links(self):
         """Popular tracks should have YouTube links in the format"""

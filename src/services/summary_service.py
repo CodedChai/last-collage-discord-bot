@@ -30,9 +30,17 @@ class PairOverlap:
 
 
 @dataclass
+class OutlierDetail:
+    name: str
+    overlap_score: int
+    group_avg_score: float
+    unique_artists: list[str]
+
+
+@dataclass
 class GroupSummary:
     most_overlapping: Optional[PairOverlap]
-    biggest_outlier: Optional[str]
+    biggest_outlier: Optional[OutlierDetail]
     popular_artists: list[tuple[str, list[str]]]
     popular_albums: list[tuple[str, list[str]]]
     popular_tracks: list[tuple[str, list[str]]]
@@ -98,11 +106,24 @@ def compute_group_summary(users: list[UserListeningData]) -> GroupSummary:
             if best_overlap is None or overlap.total_shared > best_overlap.total_shared:
                 best_overlap = overlap
 
-    biggest_outlier: Optional[str] = None
+    outlier_detail: Optional[OutlierDetail] = None
     if len(users) >= 2:
-        biggest_outlier = min(overlap_scores, key=lambda k: overlap_scores[k])
-        if all(v == overlap_scores[biggest_outlier] for v in overlap_scores.values()):
-            biggest_outlier = None
+        outlier_name = min(overlap_scores, key=lambda k: overlap_scores[k])
+        if not all(v == overlap_scores[outlier_name] for v in overlap_scores.values()):
+            outlier_user = next(u for u in users if u.display_name == outlier_name)
+            all_other_artists = set()
+            for u in users:
+                if u.display_name != outlier_name:
+                    all_other_artists |= u.artists
+            unique_artists = sorted(outlier_user.artists - all_other_artists)
+            other_scores = [v for k, v in overlap_scores.items() if k != outlier_name]
+            avg_score = sum(other_scores) / len(other_scores) if other_scores else 0
+            outlier_detail = OutlierDetail(
+                name=outlier_name,
+                overlap_score=overlap_scores[outlier_name],
+                group_avg_score=avg_score,
+                unique_artists=unique_artists[:5],
+            )
 
     artist_users: dict[str, list[str]] = {}
     album_users: dict[str, list[str]] = {}
@@ -122,6 +143,8 @@ def compute_group_summary(users: list[UserListeningData]) -> GroupSummary:
             album_users[album_name].append(u.display_name)
 
         for track_tuple, playcount in u.tracks.items():
+            if playcount < 2:
+                continue
             track_name = f"{track_tuple[0]} - {track_tuple[1]}"
             if track_name not in track_users:
                 track_users[track_name] = []
@@ -167,7 +190,7 @@ def compute_group_summary(users: list[UserListeningData]) -> GroupSummary:
 
     return GroupSummary(
         most_overlapping=best_overlap,
-        biggest_outlier=biggest_outlier,
+        biggest_outlier=outlier_detail,
         popular_artists=popular_artists,
         popular_albums=popular_albums,
         popular_tracks=popular_tracks,
