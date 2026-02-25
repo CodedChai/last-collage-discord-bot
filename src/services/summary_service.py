@@ -131,8 +131,6 @@ def compute_group_summary(users: list[UserListeningData]) -> GroupSummary:
             album_users[album_name].append(u.display_name)
 
         for track_tuple, playcount in u.tracks.items():
-            if playcount < 2:
-                continue
             track_name = f"{track_tuple[0]} - {track_tuple[1]}"
             if track_name not in track_users:
                 track_users[track_name] = []

@@ -217,18 +217,6 @@ class TestFormatSummaryText:
         # Check that usernames are shown
         assert "(A, B)" in text
 
-    def test_popular_tracks_require_min_2_plays(self):
-        """Tracks with only 1 play should not appear in popular tracks"""
-        a = _make_user("A", tracks={("Shared", "Track"): 1})
-        b = _make_user("B", tracks={("Shared", "Track"): 1})
-        summary = compute_group_summary([a, b])
-        assert len(summary.popular_tracks) == 0
-
-        a2 = _make_user("A", tracks={("Shared", "Track"): 2})
-        b2 = _make_user("B", tracks={("Shared", "Track"): 2})
-        summary2 = compute_group_summary([a2, b2])
-        assert len(summary2.popular_tracks) == 1
-
     def test_popular_tracks_include_youtube_links(self):
         """Popular tracks should have YouTube links in the format"""
         a = _make_user("A", tracks={("Artist A", "Song A"): 5, ("Shared", "Track"): 10})

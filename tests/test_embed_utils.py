@@ -61,12 +61,12 @@ class TestFormatTopTracks:
         assert lines[1].startswith("2. ")
 
     def test_default_limit_is_five(self):
-        tracks = [_make_track(f"Song{i}", "Art", i, 1) for i in range(10)]
+        tracks = [_make_track(f"Song{i}", "Art", i, 5) for i in range(10)]
         result = format_top_tracks(tracks)
         assert len(result.split("\n")) == 5
 
     def test_respects_custom_limit(self):
-        tracks = [_make_track(f"Song{i}", "Art", i, 1) for i in range(10)]
+        tracks = [_make_track(f"Song{i}", "Art", i, 5) for i in range(10)]
         result = format_top_tracks(tracks, limit=3)
         assert len(result.split("\n")) == 3
 
@@ -75,8 +75,19 @@ class TestFormatTopTracks:
         result = format_top_tracks(tracks, limit=5)
         assert len(result.split("\n")) == 1
 
+    def test_filters_tracks_with_less_than_2_plays(self):
+        tracks = [
+            _make_track("Hit", "Band", 1, 10),
+            _make_track("Skip", "Band", 2, 1),
+            _make_track("Ok", "Band", 3, 2),
+        ]
+        result = format_top_tracks(tracks)
+        assert "Hit" in result
+        assert "Ok" in result
+        assert "Skip" not in result
+
     def test_youtube_url_uses_quote_plus(self):
-        tracks = [_make_track("Hello World", "Foo & Bar", 1, 1)]
+        tracks = [_make_track("Hello World", "Foo & Bar", 1, 5)]
         result = format_top_tracks(tracks)
         expected_query = quote_plus("Foo & Bar Hello World")
         assert expected_query in result
@@ -104,7 +115,7 @@ class TestBuildCollageEmbed:
     def test_description_contains_top_tracks_header(self):
         top_tracks = _make_top_tracks([("Song", "Artist", 10)])
         embed = build_collage_embed("T", top_tracks, "7day")
-        assert "Top 5 Tracks:" in embed.description
+        assert "Top 1 Track:" in embed.description
 
     def test_description_contains_formatted_tracks(self):
         top_tracks = _make_top_tracks([("Song", "Artist", 10)])

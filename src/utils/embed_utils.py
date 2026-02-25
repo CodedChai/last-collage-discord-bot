@@ -16,18 +16,21 @@ PERIOD_LABELS = {
 
 
 def format_top_tracks(tracks, limit=5):
+    eligible = [t for t in tracks if t.playcount >= 2]
     return "\n".join(
         f"{i + 1}. [{track.artist} - {track.name}]"
         f"(https://www.youtube.com/results?search_query={quote_plus(f'{track.artist} {track.name}')})"
         f" ({track.playcount} plays)"
-        for i, track in enumerate(tracks[:limit])
+        for i, track in enumerate(eligible[:limit])
     )
 
 
 def build_collage_embed(title, top_tracks, period_val):
-    has_tracks = top_tracks and top_tracks.tracks
-    if has_tracks:
-        description = f"**Top 5 Tracks:**\n{format_top_tracks(top_tracks.tracks)}"
+    eligible = [t for t in top_tracks.tracks if t.playcount >= 2] if top_tracks and top_tracks.tracks else []
+    formatted = format_top_tracks(top_tracks.tracks) if eligible else ""
+    if formatted:
+        count = len(eligible[:5])
+        description = f"**Top {count} Track{'s' if count != 1 else ''}:**\n{formatted}"
     else:
         description = "*No tracks found for this period.*"
 
