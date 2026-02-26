@@ -142,7 +142,7 @@ class ScheduledCollageCog(commands.Cog):
         if channel is None:
             return
 
-        semaphore = asyncio.Semaphore(3)
+        semaphore = asyncio.Semaphore(8)
 
         async def _limited_post(schedule: WeeklySchedule):
             async with semaphore:
