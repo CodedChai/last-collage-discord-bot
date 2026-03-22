@@ -18,6 +18,11 @@ from tenacity import (
 from models import TopTracksModel, TopAlbumsModel, TopArtistsModel
 from services.metrics_service import LASTFM_REQUEST_LATENCY, LASTFM_REQUEST_COUNT
 
+_testing = os.getenv("TESTING", "").lower() in ("1", "true")
+_RETRY_ATTEMPTS = 2 if _testing else 5
+_RETRY_WAIT_MIN = 0 if _testing else 1
+_RETRY_WAIT_MAX = 0 if _testing else 10
+
 load_dotenv()
 
 logger = logging.getLogger("lastfm_collage_bot.lastfm_service")
@@ -65,8 +70,8 @@ class RetryableLastFmError(Exception):
 
 
 @retry(
-    stop=stop_after_attempt(5),
-    wait=wait_exponential(multiplier=1, min=1, max=10),
+    stop=stop_after_attempt(_RETRY_ATTEMPTS),
+    wait=wait_exponential(multiplier=1, min=_RETRY_WAIT_MIN, max=_RETRY_WAIT_MAX),
     retry=retry_if_exception_type((aiohttp.ClientError, RetryableLastFmError, asyncio.TimeoutError)),
     before_sleep=before_sleep_log(logger, logging.WARNING),
     reraise=True,
