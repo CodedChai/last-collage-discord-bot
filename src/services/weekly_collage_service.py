@@ -35,7 +35,7 @@ async def fetch_user_listening_data(
         fetch_top_tracks(session, lastfm_username, period),
     )
 
-    listening_data = extract_listening_data(display_name, top_artists, top_albums, top_tracks)
+    listening_data = extract_listening_data(display_name, top_albums, top_tracks, top_artists)
     return FetchResult(
         listening_data=listening_data,
         top_artists=top_artists,

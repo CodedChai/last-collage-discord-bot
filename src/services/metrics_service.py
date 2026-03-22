@@ -21,9 +21,13 @@ logger = logging.getLogger("lastfm_collage_bot.metrics")
 _resource = Resource.create({
     "service.name": os.getenv("OTEL_SERVICE_NAME", "lastfm-collage-bot"),
 })
-_exporter = OTLPMetricExporter()
-_reader = PeriodicExportingMetricReader(_exporter, export_interval_millis=60_000)
-_provider = MeterProvider(resource=_resource, metric_readers=[_reader])
+_testing = os.getenv("TESTING", "").lower() in ("1", "true")
+if _testing:
+    _provider = MeterProvider(resource=_resource)
+else:
+    _exporter = OTLPMetricExporter()
+    _reader = PeriodicExportingMetricReader(_exporter, export_interval_millis=60_000)
+    _provider = MeterProvider(resource=_resource, metric_readers=[_reader])
 metrics.set_meter_provider(_provider)
 
 _meter = metrics.get_meter("lastfm-collage-bot")

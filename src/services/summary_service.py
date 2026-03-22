@@ -3,7 +3,12 @@ from dataclasses import dataclass
 from itertools import combinations
 from typing import Optional
 
-from models import TopArtistsModel, TopAlbumsModel, TopTracksModel
+from models import AlbumModel, TopArtistsModel, TopAlbumsModel, TopTracksModel
+from utils.collage_utils import (
+    build_artist_rank_map,
+    determine_dynamic_grid_size,
+    sort_with_artist_tiebreak,
+)
 
 
 @dataclass
@@ -46,20 +51,36 @@ class GroupSummary:
     user_count: int
 
 
+def get_collage_albums(
+    top_albums: Optional[TopAlbumsModel],
+    top_artists: Optional[TopArtistsModel] = None,
+) -> list[AlbumModel]:
+    """Return the albums that would appear in a user's collage using dynamic grid sizing."""
+    if not top_albums or not top_albums.albums:
+        return []
+    artist_rank_map = build_artist_rank_map(top_artists)
+    sorted_albums = sort_with_artist_tiebreak(top_albums.albums, artist_rank_map)
+    grid_cols, grid_rows = determine_dynamic_grid_size(sorted_albums)
+    return sorted_albums[: grid_cols * grid_rows]
+
+
 def extract_listening_data(
     display_name: str,
-    top_artists: Optional[TopArtistsModel],
     top_albums: Optional[TopAlbumsModel],
     top_tracks: Optional[TopTracksModel],
+    top_artists: Optional[TopArtistsModel] = None,
+    collage_albums: Optional[list[AlbumModel]] = None,
 ) -> UserListeningData:
-    artists: set[str] = set()
     albums: set[tuple[str, str]] = set()
+    artists: set[str] = set()
     tracks: dict[tuple[str, str], int] = {}
 
-    if top_artists:
-        artists = {a.name for a in top_artists.artists}
-    if top_albums:
-        albums = {(a.artist, a.name) for a in top_albums.albums}
+    if collage_albums is None:
+        collage_albums = get_collage_albums(top_albums, top_artists)
+
+    albums = {(a.artist, a.name) for a in collage_albums}
+    artists = {a.artist for a in collage_albums}
+
     if top_tracks:
         tracks = {(t.artist, t.name): t.playcount for t in top_tracks.tracks}
 

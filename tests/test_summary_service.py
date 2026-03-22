@@ -16,6 +16,7 @@ from models import (
 from services.summary_service import (
     UserListeningData,
     extract_listening_data,
+    get_collage_albums,
     compute_pair_overlap,
     compute_group_summary,
 )
@@ -25,6 +26,7 @@ from formatters.summary_formatter import format_summary_text
 def _make_user(name, artists=None, albums=None, tracks=None):
     """
     Helper to create UserListeningData.
+    artists are derived from albums if not provided explicitly.
     tracks should be a dict mapping (artist, track) tuples to playcounts,
     or a list of tuples which will be converted to dict with playcount=1.
     """
@@ -33,29 +35,75 @@ def _make_user(name, artists=None, albums=None, tracks=None):
     elif isinstance(tracks, dict):
         tracks_dict = tracks
     else:
-        # Convert list of tuples to dict with default playcount of 1
         tracks_dict = {t: 1 for t in tracks}
+
+    album_set = set(albums or [])
+    if artists is not None:
+        artist_set = set(artists)
+    else:
+        artist_set = {a for a, _ in album_set}
 
     return UserListeningData(
         display_name=name,
-        artists=set(artists or []),
-        albums=set(albums or []),
+        artists=artist_set,
+        albums=album_set,
         tracks=tracks_dict,
     )
 
 
-class TestExtractListeningData:
-    def test_extracts_all_fields(self):
-        top_artists = TopArtistsModel.model_validate(
+class TestGetCollageAlbums:
+    def test_returns_albums_within_dynamic_grid(self):
+        top_albums = TopAlbumsModel.model_validate(
             {
-                "topartists": {
-                    "artist": [
-                        {"name": "Radiohead", "@attr": {"rank": 1}, "playcount": 100},
-                        {"name": "Bjork", "@attr": {"rank": 2}, "playcount": 50},
+                "topalbums": {
+                    "album": [
+                        {"name": f"Album{i}", "artist": {"name": f"Artist{i}"},
+                         "@attr": {"rank": i}, "playcount": 20 - i, "image": []}
+                        for i in range(1, 10)
                     ]
                 }
             }
         )
+        result = get_collage_albums(top_albums)
+        assert len(result) > 0
+        assert all(isinstance(a, AlbumModel) for a in result)
+
+    def test_returns_empty_for_none(self):
+        assert get_collage_albums(None) == []
+
+    def test_uses_artist_tiebreak(self):
+        top_artists = TopArtistsModel.model_validate(
+            {
+                "topartists": {
+                    "artist": [
+                        {"name": "ArtistA", "@attr": {"rank": 1}, "playcount": 100},
+                        {"name": "ArtistB", "@attr": {"rank": 2}, "playcount": 50},
+                    ]
+                }
+            }
+        )
+        top_albums = TopAlbumsModel.model_validate(
+            {
+                "topalbums": {
+                    "album": [
+                        {"name": f"Album{i}", "artist": {"name": "ArtistB"},
+                         "@attr": {"rank": i}, "playcount": 50, "image": []}
+                        for i in range(1, 3)
+                    ] + [
+                        {"name": f"Album{i}", "artist": {"name": "ArtistA"},
+                         "@attr": {"rank": i + 2}, "playcount": 50, "image": []}
+                        for i in range(1, 3)
+                    ]
+                }
+            }
+        )
+        result = get_collage_albums(top_albums, top_artists)
+        # ArtistA has rank 1, so tied-playcount albums should sort ArtistA first
+        assert result[0].artist == "ArtistA"
+
+
+class TestExtractListeningData:
+    def test_extracts_albums_and_artists_from_collage(self):
         top_albums = TopAlbumsModel.model_validate(
             {
                 "topalbums": {
@@ -86,18 +134,51 @@ class TestExtractListeningData:
             }
         )
 
-        data = extract_listening_data("Alice", top_artists, top_albums, top_tracks)
+        data = extract_listening_data("Alice", top_albums, top_tracks)
 
         assert data.display_name == "Alice"
-        assert data.artists == {"Radiohead", "Bjork"}
+        assert data.artists == {"Radiohead"}
         assert data.albums == {("Radiohead", "OK Computer")}
         assert data.tracks == {("Radiohead", "Paranoid Android"): 15}
 
     def test_handles_none_inputs(self):
-        data = extract_listening_data("Bob", None, None, None)
+        data = extract_listening_data("Bob", None, None)
         assert data.artists == set()
         assert data.albums == set()
         assert data.tracks == {}
+
+    def test_artists_derived_from_collage_albums(self):
+        """Artists should come from collage albums, not from a separate top artists list."""
+        top_albums = TopAlbumsModel.model_validate(
+            {
+                "topalbums": {
+                    "album": [
+                        {"name": f"Album{i}", "artist": {"name": "ArtistA"},
+                         "@attr": {"rank": i}, "playcount": 50, "image": []}
+                        for i in range(1, 3)
+                    ] + [
+                        {"name": f"Album{i}", "artist": {"name": "ArtistB"},
+                         "@attr": {"rank": i + 2}, "playcount": 50, "image": []}
+                        for i in range(1, 3)
+                    ]
+                }
+            }
+        )
+        top_artists = TopArtistsModel.model_validate(
+            {
+                "topartists": {
+                    "artist": [
+                        {"name": "ArtistA", "@attr": {"rank": 1}, "playcount": 100},
+                        {"name": "ArtistB", "@attr": {"rank": 2}, "playcount": 50},
+                        {"name": "ArtistC", "@attr": {"rank": 3}, "playcount": 30},
+                    ]
+                }
+            }
+        )
+        data = extract_listening_data("Alice", top_albums, None, top_artists)
+        assert "ArtistA" in data.artists
+        assert "ArtistB" in data.artists
+        assert "ArtistC" not in data.artists
 
 
 class TestComputePairOverlap:
