@@ -147,8 +147,8 @@ class TestExtractListeningData:
         assert data.albums == set()
         assert data.tracks == {}
 
-    def test_artists_derived_from_collage_albums(self):
-        """Artists should come from collage albums, not from a separate top artists list."""
+    def test_artists_derived_from_collage_albums_and_top_artists(self):
+        """Artists come from collage albums plus top artists with 3+ plays."""
         top_albums = TopAlbumsModel.model_validate(
             {
                 "topalbums": {
@@ -171,6 +171,7 @@ class TestExtractListeningData:
                         {"name": "ArtistA", "@attr": {"rank": 1}, "playcount": 100},
                         {"name": "ArtistB", "@attr": {"rank": 2}, "playcount": 50},
                         {"name": "ArtistC", "@attr": {"rank": 3}, "playcount": 30},
+                        {"name": "ArtistD", "@attr": {"rank": 4}, "playcount": 2},
                     ]
                 }
             }
@@ -178,7 +179,8 @@ class TestExtractListeningData:
         data = extract_listening_data("Alice", top_albums, None, top_artists)
         assert "ArtistA" in data.artists
         assert "ArtistB" in data.artists
-        assert "ArtistC" not in data.artists
+        assert "ArtistC" in data.artists  # 30 plays >= 3, included
+        assert "ArtistD" not in data.artists  # 2 plays < 3, excluded
 
 
 class TestComputePairOverlap:

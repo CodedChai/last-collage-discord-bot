@@ -81,6 +81,9 @@ def extract_listening_data(
     albums = {(a.artist, a.name) for a in collage_albums}
     artists = {a.artist for a in collage_albums}
 
+    if top_artists:
+        artists |= {a.name for a in top_artists.artists if a.playcount >= 3}
+
     if top_tracks:
         tracks = {(t.artist, t.name): t.playcount for t in top_tracks.tracks}
 
