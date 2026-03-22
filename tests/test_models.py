@@ -14,8 +14,12 @@ from models import (
     TopAlbumsModel,
     ArtistModel,
     TopArtistsModel,
+    ChannelScheduleSettings,
     CollageRequest,
     WeeklyJoinRequest,
+    WeeklySchedule,
+    channels_to_post_today,
+    DEFAULT_SUMMARY_DAY,
 )
 
 
@@ -339,3 +343,71 @@ class TestWeeklyJoinRequest:
         assert req.guild_id == 123
         assert req.channel_id == 456
         assert req.discord_user_id == 789
+
+
+# --- channels_to_post_today ---
+
+
+def _schedule(username, guild_id, channel_id):
+    return WeeklySchedule(
+        lastfm_username=username,
+        guild_id=guild_id,
+        channel_id=channel_id,
+        discord_user_id=1,
+    )
+
+
+def _setting(guild_id, channel_id, day):
+    return ChannelScheduleSettings(
+        guild_id=guild_id, channel_id=channel_id, day_of_week=day
+    )
+
+
+class TestChannelsToPostToday:
+    def test_defaults_to_sunday(self):
+        schedules = [_schedule("alice", 1, 10)]
+        result = channels_to_post_today(schedules, settings=[], today_weekday=DEFAULT_SUMMARY_DAY)
+        assert (1, 10) in result
+        assert len(result[(1, 10)]) == 1
+
+    def test_no_match_on_wrong_day(self):
+        schedules = [_schedule("alice", 1, 10)]
+        result = channels_to_post_today(schedules, settings=[], today_weekday=0)
+        assert result == {}
+
+    def test_respects_configured_day(self):
+        schedules = [_schedule("alice", 1, 10)]
+        settings = [_setting(1, 10, 3)]
+        result = channels_to_post_today(schedules, settings, today_weekday=3)
+        assert (1, 10) in result
+
+    def test_configured_day_excludes_default(self):
+        schedules = [_schedule("alice", 1, 10)]
+        settings = [_setting(1, 10, 3)]
+        result = channels_to_post_today(schedules, settings, today_weekday=DEFAULT_SUMMARY_DAY)
+        assert result == {}
+
+    def test_multiple_channels_different_days(self):
+        schedules = [
+            _schedule("alice", 1, 10),
+            _schedule("bob", 1, 10),
+            _schedule("carol", 2, 20),
+        ]
+        settings = [_setting(1, 10, 3)]  # channel 20 defaults to Sunday
+        result = channels_to_post_today(schedules, settings, today_weekday=3)
+        assert (1, 10) in result
+        assert len(result[(1, 10)]) == 2
+        assert (2, 20) not in result
+
+    def test_empty_schedules(self):
+        result = channels_to_post_today([], settings=[], today_weekday=6)
+        assert result == {}
+
+    def test_groups_users_per_channel(self):
+        schedules = [
+            _schedule("alice", 1, 10),
+            _schedule("bob", 1, 10),
+            _schedule("carol", 1, 10),
+        ]
+        result = channels_to_post_today(schedules, settings=[], today_weekday=DEFAULT_SUMMARY_DAY)
+        assert len(result[(1, 10)]) == 3

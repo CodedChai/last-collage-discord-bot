@@ -2,7 +2,6 @@ import asyncio
 import datetime
 import logging
 import traceback
-from collections import defaultdict
 from zoneinfo import ZoneInfo
 
 import discord
@@ -10,11 +9,21 @@ from discord import app_commands, ui
 from discord.ext import commands, tasks
 from pydantic import ValidationError
 
-from models import WeeklyJoinRequest, WeeklySchedule, UserPreference
+from models import (
+    DAY_NAMES,
+    DEFAULT_SUMMARY_DAY,
+    WeeklyJoinRequest,
+    WeeklySchedule,
+    UserPreference,
+    channels_to_post_today,
+)
 from services.db_service import (
     save_weekly_schedule,
     get_all_weekly_schedules,
+    get_all_channel_schedule_settings,
+    get_channel_schedule_day,
     get_lastfm_username,
+    save_channel_schedule_day,
     save_user_preference,
     get_weekly_subscriber_count,
 )
@@ -31,6 +40,39 @@ from services.metrics_service import track_command
 logger = logging.getLogger("lastfm_collage_bot.scheduled_collage_cog")
 
 CT = ZoneInfo("America/Chicago")
+
+DAY_OF_WEEK_OPTIONS = [
+    discord.SelectOption(label=name, value=str(i), default=(i == DEFAULT_SUMMARY_DAY))
+    for i, name in enumerate(DAY_NAMES)
+]
+
+
+class SetWeeklyDayModal(discord.ui.Modal, title="Set Weekly Collage Day"):
+    day = ui.Label(
+        text="Day of Week",
+        component=ui.Select(options=DAY_OF_WEEK_OPTIONS),
+    )
+
+    def __init__(self, guild_id: int, channel_id: int):
+        super().__init__()
+        self.guild_id = guild_id
+        self.channel_id = channel_id
+
+    async def on_submit(self, interaction: discord.Interaction):
+        day_of_week = int(self.day.component.values[0])
+        await save_channel_schedule_day(self.guild_id, self.channel_id, day_of_week)
+        day_name = DAY_NAMES[day_of_week]
+        await interaction.response.send_message(
+            f"✅ Weekly collages in this channel will now be posted every **{day_name}** at 9 AM CT."
+        )
+
+    async def on_error(
+        self, interaction: discord.Interaction, error: Exception
+    ) -> None:
+        await interaction.response.send_message(
+            "Oops! Something went wrong.", ephemeral=True
+        )
+        traceback.print_exception(type(error), error, error.__traceback__)
 
 
 class ScheduleWeeklyModal(discord.ui.Modal, title="Join Weekly Collage"):
@@ -75,8 +117,10 @@ class ScheduleWeeklyModal(discord.ui.Modal, title="Join Weekly Collage"):
             )
         )
         count = await get_weekly_subscriber_count(self.guild_id, self.channel_id)
+        day_value = await get_channel_schedule_day(self.guild_id, self.channel_id)
+        day_name = DAY_NAMES[day_value if day_value is not None else DEFAULT_SUMMARY_DAY]
         await interaction.response.send_message(
-            f"✅ Welcome! Every Sunday at 9 AM CT, a 7-day collage for **{request.username}** will be posted in this channel.",
+            f"✅ Welcome! Every {day_name} at 9 AM CT, a 7-day collage for **{request.username}** will be posted in this channel.",
             ephemeral=True,
         )
         await interaction.channel.send(
@@ -114,19 +158,27 @@ class ScheduledCollageCog(commands.Cog):
             ScheduleWeeklyModal(interaction, default_username=cached_username)
         )
 
+    @app_commands.command(
+        name="set-weekly-collage-day",
+        description="Set which day of the week the weekly collage posts in this channel",
+    )
+    @app_commands.guild_only()
+    @track_command("set_weekly_collage_day")
+    async def set_weekly_collage_day(self, interaction: discord.Interaction):
+        await interaction.response.send_modal(
+            SetWeeklyDayModal(interaction.guild_id, interaction.channel_id)
+        )
+
     @tasks.loop(time=datetime.time(hour=9, minute=0, tzinfo=CT))
     async def post_weekly_collages(self):
         now = datetime.datetime.now(CT)
-        if now.weekday() != 6:
-            return
-        await self._post_weekly_collages()
+        await self._post_weekly_collages(now.weekday())
 
-    async def _post_weekly_collages(self):
+    async def _post_weekly_collages(self, today_weekday: int):
         schedules = await get_all_weekly_schedules()
+        settings = await get_all_channel_schedule_settings()
 
-        channels: dict[tuple[int, int], list[WeeklySchedule]] = defaultdict(list)
-        for schedule in schedules:
-            channels[(schedule.guild_id, schedule.channel_id)].append(schedule)
+        channels = channels_to_post_today(schedules, settings, today_weekday)
 
         for (guild_id, channel_id), channel_schedules in channels.items():
             await self._post_channel_collages(guild_id, channel_id, channel_schedules)

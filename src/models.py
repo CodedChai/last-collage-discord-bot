@@ -108,3 +108,35 @@ class WeeklySchedule(BaseModel):
     guild_id: int
     channel_id: int
     discord_user_id: int
+
+
+class ChannelScheduleSettings(BaseModel):
+    guild_id: int
+    channel_id: int
+    day_of_week: int  # 0=Monday, 6=Sunday (matches datetime.weekday())
+
+
+# --- Pure helpers (functional core) ---
+
+DEFAULT_SUMMARY_DAY = 6  # Sunday
+
+DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+
+def channels_to_post_today(
+    schedules: list[WeeklySchedule],
+    settings: list[ChannelScheduleSettings],
+    today_weekday: int,
+) -> dict[tuple[int, int], list[WeeklySchedule]]:
+    """Return only the channels whose configured day matches today_weekday."""
+    day_lookup: dict[tuple[int, int], int] = {
+        (s.guild_id, s.channel_id): s.day_of_week for s in settings
+    }
+
+    result: dict[tuple[int, int], list[WeeklySchedule]] = {}
+    for schedule in schedules:
+        key = (schedule.guild_id, schedule.channel_id)
+        channel_day = day_lookup.get(key, DEFAULT_SUMMARY_DAY)
+        if channel_day == today_weekday:
+            result.setdefault(key, []).append(schedule)
+    return result

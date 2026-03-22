@@ -17,6 +17,9 @@ from services.db_service import (
     get_weekly_subscriber_count,
     delete_weekly_schedule,
     get_all_weekly_schedules,
+    save_channel_schedule_day,
+    get_channel_schedule_day,
+    get_all_channel_schedule_settings,
 )
 
 
@@ -189,3 +192,66 @@ async def test_get_all_weekly_schedules(mock_pool):
     usernames = {s.lastfm_username for s in all_schedules}
     assert usernames == {"a", "b"}
     mock_pool.fetch.assert_awaited_once()
+
+
+# --- save_channel_schedule_day / get_channel_schedule_day ---
+
+
+@pytest.mark.asyncio
+async def test_save_channel_schedule_day(mock_pool):
+    mock_pool.execute.return_value = "INSERT 0 1"
+    await save_channel_schedule_day(guild_id=1, channel_id=10, day_of_week=3)
+    mock_pool.execute.assert_awaited_once()
+    call_args = mock_pool.execute.call_args[0]
+    assert 1 in call_args
+    assert 10 in call_args
+    assert 3 in call_args
+
+
+@pytest.mark.asyncio
+async def test_save_channel_schedule_day_upsert(mock_pool):
+    mock_pool.execute.return_value = "INSERT 0 1"
+    await save_channel_schedule_day(guild_id=1, channel_id=10, day_of_week=3)
+    await save_channel_schedule_day(guild_id=1, channel_id=10, day_of_week=5)
+    assert mock_pool.execute.await_count == 2
+    second_call_args = mock_pool.execute.call_args_list[1][0]
+    assert 5 in second_call_args
+
+
+@pytest.mark.asyncio
+async def test_get_channel_schedule_day_found(mock_pool):
+    mock_pool.fetchval.return_value = 3
+    result = await get_channel_schedule_day(1, 10)
+    assert result == 3
+    mock_pool.fetchval.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_get_channel_schedule_day_not_found(mock_pool):
+    mock_pool.fetchval.return_value = None
+    result = await get_channel_schedule_day(999, 888)
+    assert result is None
+
+
+# --- get_all_channel_schedule_settings ---
+
+
+@pytest.mark.asyncio
+async def test_get_all_channel_schedule_settings(mock_pool):
+    mock_pool.fetch.return_value = [
+        {"guild_id": 1, "channel_id": 10, "day_of_week": 3},
+        {"guild_id": 2, "channel_id": 20, "day_of_week": 6},
+    ]
+    settings = await get_all_channel_schedule_settings()
+    assert len(settings) == 2
+    assert settings[0].guild_id == 1
+    assert settings[0].day_of_week == 3
+    assert settings[1].day_of_week == 6
+    mock_pool.fetch.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_get_all_channel_schedule_settings_empty(mock_pool):
+    mock_pool.fetch.return_value = []
+    settings = await get_all_channel_schedule_settings()
+    assert settings == []

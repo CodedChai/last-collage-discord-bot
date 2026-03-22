@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 
 import asyncpg
 
-from models import UserPreference, WeeklySchedule
+from models import ChannelScheduleSettings, UserPreference, WeeklySchedule
 from services.metrics_service import DB_QUERY_LATENCY, DB_QUERY_COUNT
 
 logger = logging.getLogger("lastfm_collage_bot.db_service")
@@ -36,6 +36,16 @@ class DatabaseService:
                     channel_id BIGINT NOT NULL,
                     discord_user_id BIGINT NOT NULL,
                     PRIMARY KEY (lastfm_username, guild_id)
+                )
+                """
+            )
+            await conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS channel_schedule_settings (
+                    guild_id BIGINT NOT NULL,
+                    channel_id BIGINT NOT NULL,
+                    day_of_week INTEGER NOT NULL DEFAULT 6,
+                    PRIMARY KEY (guild_id, channel_id)
                 )
                 """
             )
@@ -154,6 +164,45 @@ class DatabaseService:
                 for row in rows
             ]
 
+    async def save_channel_schedule_day(
+        self, guild_id: int, channel_id: int, day_of_week: int
+    ) -> None:
+        async with self._track_query("save_channel_schedule_day"):
+            await self.pool.execute(
+                """
+                INSERT INTO channel_schedule_settings (guild_id, channel_id, day_of_week)
+                VALUES ($1, $2, $3)
+                ON CONFLICT(guild_id, channel_id) DO UPDATE SET day_of_week = excluded.day_of_week
+                """,
+                guild_id,
+                channel_id,
+                day_of_week,
+            )
+
+    async def get_channel_schedule_day(
+        self, guild_id: int, channel_id: int
+    ) -> int | None:
+        async with self._track_query("get_channel_schedule_day"):
+            return await self.pool.fetchval(
+                "SELECT day_of_week FROM channel_schedule_settings WHERE guild_id = $1 AND channel_id = $2",
+                guild_id,
+                channel_id,
+            )
+
+    async def get_all_channel_schedule_settings(self) -> list[ChannelScheduleSettings]:
+        async with self._track_query("get_all_channel_schedule_settings"):
+            rows = await self.pool.fetch(
+                "SELECT guild_id, channel_id, day_of_week FROM channel_schedule_settings"
+            )
+            return [
+                ChannelScheduleSettings(
+                    guild_id=row["guild_id"],
+                    channel_id=row["channel_id"],
+                    day_of_week=row["day_of_week"],
+                )
+                for row in rows
+            ]
+
 
 _db: DatabaseService | None = None
 
@@ -209,3 +258,17 @@ async def delete_weekly_schedule(discord_user_id: int, guild_id: int) -> bool:
 
 async def get_all_weekly_schedules() -> list[WeeklySchedule]:
     return await get_db().get_all_weekly_schedules()
+
+
+async def save_channel_schedule_day(
+    guild_id: int, channel_id: int, day_of_week: int
+) -> None:
+    await get_db().save_channel_schedule_day(guild_id, channel_id, day_of_week)
+
+
+async def get_channel_schedule_day(guild_id: int, channel_id: int) -> int | None:
+    return await get_db().get_channel_schedule_day(guild_id, channel_id)
+
+
+async def get_all_channel_schedule_settings() -> list[ChannelScheduleSettings]:
+    return await get_db().get_all_channel_schedule_settings()
