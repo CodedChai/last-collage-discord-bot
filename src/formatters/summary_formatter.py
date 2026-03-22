@@ -28,14 +28,12 @@ def format_summary_text(summary: GroupSummary) -> str:
     if summary.biggest_outlier:
         outlier = summary.biggest_outlier
         if outlier.overlap_score == 0:
-            overlap_str = "no overlaps"
+            detail = "Zero overlap with anyone. True musical rebel!"
         elif outlier.overlap_score == 1:
-            overlap_str = "1 overlap"
+            detail = "Just 1 overlap with the rest of the crew!"
         else:
-            overlap_str = f"{outlier.overlap_score} overlaps"
-        lines.append(
-            f"🦄 **{outlier.name}** marches to their own beat! Only {overlap_str} with the group"
-        )
+            detail = f"Just {outlier.overlap_score} overlaps with the rest of the crew!"
+        lines.append(f"🦄 **{outlier.name}** marches to their own beat! {detail}")
 
     if summary.popular_artists:
         lines.append("\n🏆 **Group Favorite Artists:**")

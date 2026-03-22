@@ -13,6 +13,7 @@ from services import lastfm_service
 from services.lastfm_service import (
     BASE_URL,
     LastFmError,
+    RetryableLastFmError,
     _check_for_errors,
     fetch_top_tracks,
     fetch_top_albums,
@@ -100,12 +101,12 @@ class TestFetchTopTracks:
         assert exc_info.value.code == 6
 
     @pytest.mark.asyncio
-    async def test_http_error_returns_none(self):
+    async def test_http_error_raises_after_retries(self):
         with aioresponses() as mocked:
-            mocked.get(URL_PATTERN, status=500)
+            mocked.get(URL_PATTERN, status=500, repeat=True)
             async with aiohttp.ClientSession() as session:
-                result = await fetch_top_tracks(session, "testuser", "7day")
-        assert result is None
+                with pytest.raises(RetryableLastFmError):
+                    await fetch_top_tracks(session, "testuser", "7day")
 
 
 # --- fetch_top_albums ---
@@ -152,12 +153,12 @@ class TestFetchTopAlbums:
         assert exc_info.value.code == 6
 
     @pytest.mark.asyncio
-    async def test_http_error_returns_none(self):
+    async def test_http_error_raises_after_retries(self):
         with aioresponses() as mocked:
-            mocked.get(URL_PATTERN, status=500)
+            mocked.get(URL_PATTERN, status=500, repeat=True)
             async with aiohttp.ClientSession() as session:
-                result = await fetch_top_albums(session, "testuser", "7day")
-        assert result is None
+                with pytest.raises(RetryableLastFmError):
+                    await fetch_top_albums(session, "testuser", "7day")
 
 
 # --- fetch_top_artists ---
@@ -200,9 +201,9 @@ class TestFetchTopArtists:
         assert exc_info.value.code == 6
 
     @pytest.mark.asyncio
-    async def test_http_error_returns_none(self):
+    async def test_http_error_raises_after_retries(self):
         with aioresponses() as mocked:
-            mocked.get(URL_PATTERN, status=500)
+            mocked.get(URL_PATTERN, status=500, repeat=True)
             async with aiohttp.ClientSession() as session:
-                result = await fetch_top_artists(session, "testuser", "7day")
-        assert result is None
+                with pytest.raises(RetryableLastFmError):
+                    await fetch_top_artists(session, "testuser", "7day")
