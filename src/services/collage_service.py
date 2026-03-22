@@ -31,11 +31,21 @@ load_dotenv()
 
 logger = logging.getLogger("lastfm_collage_bot.collage_service")
 
-MAX_CONCURRENT_DOWNLOADS = 10
+MAX_CONCURRENT_DOWNLOADS = 6
 IMAGE_DOWNLOAD_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"
 }
 FALLBACK_SIZES = ["500x500", "1000x1000", "174s"]
+
+
+class _RetryableImageError(Exception):
+    """Raised for non-200/non-404 responses that should be retried."""
+
+    def __init__(self, status: int, url: str):
+        self.status = status
+        super().__init__(f"HTTP {status} downloading {url}")
+
+
 SIZE_PATTERN = re.compile(r"(/i/u/)[^/]+(/)")
 
 
@@ -120,9 +130,9 @@ def get_cache() -> ImageCache | None:
 
 
 @retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=0.5, min=0.5, max=3),
-    retry=retry_if_exception_type(aiohttp.ClientError),
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=0.5, min=0.5, max=5),
+    retry=retry_if_exception_type((aiohttp.ClientError, asyncio.TimeoutError, _RetryableImageError)),
     reraise=True,
 )
 async def _fetch_image_bytes(session: aiohttp.ClientSession, url: str) -> bytes | None:
@@ -135,7 +145,7 @@ async def _fetch_image_bytes(session: aiohttp.ClientSession, url: str) -> bytes 
             logger.warning(
                 f"Failed to download image from {url}: HTTP {response.status}"
             )
-            return None
+            raise _RetryableImageError(response.status, url)
 
 
 async def _download_image(
@@ -162,7 +172,7 @@ async def _download_image(
 
         logger.warning(f"All image sizes failed for {url}")
         return None
-    except aiohttp.ClientError as e:
+    except (aiohttp.ClientError, _RetryableImageError) as e:
         logger.warning(f"Network error downloading image from {url}: {e}")
         return None
     except Exception as e:

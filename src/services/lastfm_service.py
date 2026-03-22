@@ -2,6 +2,8 @@ import logging
 import os
 import time
 
+import asyncio
+
 import aiohttp
 from dotenv import load_dotenv
 from pydantic import BaseModel
@@ -54,10 +56,18 @@ def _check_for_errors(data: dict):
         raise LastFmError(code, message)
 
 
+class RetryableLastFmError(Exception):
+    """Raised for non-200 responses that should be retried."""
+
+    def __init__(self, status: int, method: str, username: str):
+        self.status = status
+        super().__init__(f"HTTP {status} fetching {method} for {username}")
+
+
 @retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=1, max=5),
-    retry=retry_if_exception_type(aiohttp.ClientError),
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=1, min=1, max=10),
+    retry=retry_if_exception_type((aiohttp.ClientError, RetryableLastFmError, asyncio.TimeoutError)),
     before_sleep=before_sleep_log(logger, logging.WARNING),
     reraise=True,
 )
@@ -86,15 +96,14 @@ async def _fetch_lastfm(
                 status = "success"
                 return result
             else:
-                logger.error(
+                logger.warning(
                     f"Failed to fetch {method} for {username}: HTTP {response.status}"
                 )
-                return None
+                raise RetryableLastFmError(response.status, method, username)
     except LastFmError:
         raise
-    except aiohttp.ClientError as e:
-        logger.error(f"Network error fetching {method} for {username}: {e}")
-        return None
+    except (aiohttp.ClientError, RetryableLastFmError, asyncio.TimeoutError):
+        raise
     except Exception as e:
         logger.error(
             f"Unexpected error fetching {method} for {username}: {e}", exc_info=True
