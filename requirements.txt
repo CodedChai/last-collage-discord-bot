@@ -12,4 +12,4 @@ opentelemetry-exporter-otlp-proto-http==1.40.0
 opentelemetry-instrumentation==0.61b0
 opentelemetry-instrumentation-aiohttp-client==0.61b0
 opentelemetry-instrumentation-asyncpg==0.61b0
-opentelemetry-instrumentation-redis==0.61b0
+opentelemetry-instrumentation-redis==0.62b0
